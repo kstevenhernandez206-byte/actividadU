@@ -180,7 +180,6 @@ if st.session_state.get('admin_authenticated', False):
 
     # opción de ocultar panel lateral para que los jugadores no vean controles
     hide_side = st.checkbox('Ocultar panel lateral de admin (para jugadores)', value=True, key='hide_sidebar_admin')
-    st.session_state.hide_sidebar_admin = hide_side
 
 st.markdown('---')
 
