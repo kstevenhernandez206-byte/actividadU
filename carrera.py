@@ -49,7 +49,7 @@ def simulate_players(names):
             st.session_state.jugadores[n] = file_state['players_info'][n]
     save_state(file_state)
 
-# Cuestionario proporcionado por el usuario (selección múltiple)
+# Cuestionario (selección múltiple)
 questions = [
     {"q": "¿Cuál es el propósito central de la inteligencia artificial según Russell y Norvig (2021)?",
      "options": ["Crear máquinas que imiten emociones humanas", "Construir agentes capaces de actuar racionalmente en un entorno", "Sustituir completamente al ser humano en el trabajo", "Generar entretenimiento digital"],
