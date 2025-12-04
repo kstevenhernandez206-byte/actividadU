@@ -435,3 +435,4 @@ if ranking_main:
         barra_carretera_html(progreso_row, width="100%")
 else:
     st.info("Aún no hay jugadores registrados para mostrar ranking.")
+# Fin de carrera.py
