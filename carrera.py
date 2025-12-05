@@ -1,20 +1,24 @@
-# carrera.py — Versión final integrada
-# - Admin oculto en sidebar (abrir mediante checkbox)
-# - Auditoría con filtro por persona
-# - Tiempo mostrado solo si el jugador terminó (formato MM:SS)
-# - Vista de jugador simplificada (sin "Carrera en vivo" ni "Tu progreso" global)
-# - 12 preguntas, 20s por pregunta, 10 ptos/Correct, meta 50 pts
+# carrera.py — Versión FINAL con autorefresh (0.5s), 8 preguntas, 60s por pregunta
+# Opción C: Admin oculto, auditoría filtrable, top3 y progreso global en admin.
+# Nota: requiere instalar: pip install streamlit-autorefresh
 
 import streamlit as st
+from streamlit_autorefresh import st_autorefresh
 import time
 import pandas as pd
 import os
 import json
-from datetime import timedelta
 
-# ---------------------------
+# =========================
+# Configuración inicial
+# =========================
+st.set_page_config(page_title="Carrera", layout="wide")
+# Auto-refresh cada 500 ms (0.5 s) — **SIEMPRE** activo (tal como pediste)
+st_autorefresh(interval=500, key="auto_refresh")
+
+# =========================
 # Archivos persistentes
-# ---------------------------
+# =========================
 BASE_DIR = os.path.dirname(__file__)
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 ANSWERS_FILE = os.path.join(BASE_DIR, "answers.json")
@@ -42,13 +46,20 @@ def save_answers(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def append_answer(entry):
-    answers = load_answers()
-    answers.append(entry)
-    save_answers(answers)
+    ans = load_answers()
+    ans.append(entry)
+    save_answers(ans)
 
-# ---------------------------
-# Preguntas (12)
-# ---------------------------
+# =========================
+# Parámetros de la carrera
+# =========================
+QUESTION_TIME = 60               # 60 segundos por pregunta
+POINTS_PER_CORRECT = 10
+POINTS_TO_FINISH = 50
+
+# =========================
+# Preguntas (8 seleccionadas)
+# =========================
 questions = [
     {
         "q": "¿Qué define Russell y Norvig (2021) como propósito central de la inteligencia artificial?",
@@ -121,16 +132,6 @@ questions = [
         "correct": "Relaciones de poder, identidad y participación social"
     },
     {
-        "q": "Las redes sociales funcionan como sistemas cibernéticos porque:",
-        "options": [
-            "Sustituyen totalmente la interacción presencial",
-            "Garantizan siempre información verificada",
-            "Son espacios de ocio digital",
-            "Operan mediante retroalimentación entre usuarios, algoritmos e información"
-        ],
-        "correct": "Operan mediante retroalimentación entre usuarios, algoritmos e información"
-    },
-    {
         "q": "Tufekci (2015) advierte que los algoritmos de redes sociales tienden a priorizar:",
         "options": [
             "Información científica verificada",
@@ -139,49 +140,21 @@ questions = [
             "Contenidos que generan respuestas emocionales intensas"
         ],
         "correct": "Contenidos que generan respuestas emocionales intensas"
-    },
-    {
-        "q": "Wardle y Derakhshan (2017) denominan al fenómeno de la desinformación digital como:",
-        "options": [
-            "Fake news",
-            "Crisis comunicacional",
-            "Infoxicación",
-            "Manipulación informativa"
-        ],
-        "correct": "Fake news"
-    },
-    {
-        "q": "La UNESCO (2021) señala que la brecha digital afecta principalmente a:",
-        "options": [
-            "Adultos mayores, comunidades rurales y personas en pobreza",
-            "Empresas multinacionales",
-            "Estudiantes universitarios de ciencias sociales",
-            "Comunidades urbanas con alto acceso tecnológico"
-        ],
-        "correct": "Adultos mayores, comunidades rurales y personas en pobreza"
-    },
-    {
-        "q": "Una estrategia clave para reducir la vulnerabilidad frente a la desinformación es:",
-        "options": [
-            "Aumentar la velocidad de internet",
-            "Crear más plataformas de entretenimiento",
-            "Reducir el acceso a dispositivos móviles",
-            "Promover programas educativos de pensamiento crítico"
-        ],
-        "correct": "Promover programas educativos de pensamiento crítico"
     }
 ]
 
-# ---------------------------
-# Parámetros
-# ---------------------------
-QUESTION_TIME = 20
-POINTS_PER_CORRECT = 10
-POINTS_TO_FINISH = 50
+TOTAL_TIME = QUESTION_TIME * len(questions)  # tiempo total de la sesión
 
-# ---------------------------
-# Helpers
-# ---------------------------
+# =========================
+# Helpers / utilidades
+# =========================
+def ensure_state_keys(fs):
+    fs.setdefault("inicio", None)
+    fs.setdefault("jugadores", [])
+    fs.setdefault("players_info", {})
+    fs.setdefault("organizer", None)
+    return fs
+
 def format_seconds_to_mmss(s):
     try:
         s = int(s)
@@ -191,24 +164,30 @@ def format_seconds_to_mmss(s):
     ss = s % 60
     return f"{mm:02d}:{ss:02d}"
 
-def ensure_state_keys(fs):
-    fs.setdefault("inicio", None)
-    fs.setdefault("jugadores", [])
-    fs.setdefault("players_info", {})
-    fs.setdefault("organizer", None)
-    return fs
+# Barra visual tipo pista (HTML)
+def barra_carretera_html(progreso, width="100%"):
+    porcentaje = max(0.0, min(1.0, float(progreso))) * 100
+    left = max(2, min(98, porcentaje))
+    html = f'''
+    <div style="position:relative;width:{width};height:36px;background:#222;border-radius:10px;padding:4px;overflow:hidden;">
+      <div style="position:absolute;left:0;top:0;height:100%;width:{porcentaje}%;background:rgba(34,197,94,0.18);border-radius:8px;"></div>
+      <div style="position:absolute;left:{left}%;top:3px;font-size:22px;transform:translateX(-50%);transition:left .35s ease;">🚗</div>
+      <div style="position:absolute;right:8px;top:6px;font-size:18px;">🏁</div>
+    </div>
+    '''
+    st.markdown(html, unsafe_allow_html=True)
 
-# ---------------------------
-# Estado en session
-# ---------------------------
+# =========================
+# Estado en memoria (session)
+# =========================
 if "jugadores" not in st.session_state:
     st.session_state.jugadores = {}
 if "answers" not in st.session_state:
     st.session_state.answers = load_answers()
 
-# ---------------------------
-# Registrar jugador
-# ---------------------------
+# -------------------------
+# Funciones de jugador/admin
+# -------------------------
 def add_player(name):
     name = name.strip()
     if not name:
@@ -216,6 +195,7 @@ def add_player(name):
     fs = ensure_state_keys(load_state())
     if name not in fs["jugadores"]:
         fs["jugadores"].append(name)
+    fs.setdefault("players_info", {})
     fs["players_info"].setdefault(name, {
         "points": 0,
         "aciertos": 0,
@@ -225,7 +205,6 @@ def add_player(name):
         "joined": time.time()
     })
     save_state(fs)
-    # sync session state
     st.session_state.jugadores[name] = fs["players_info"][name]
 
 def reset_all():
@@ -234,31 +213,11 @@ def reset_all():
     st.session_state.jugadores = {}
     st.session_state.answers = []
 
-# ---------------------------
-# Barra carretera HTML (carrito)
-# ---------------------------
-def barra_carretera_html(progreso, width="100%"):
-    porcentaje = max(0.0, min(1.0, float(progreso))) * 100
-    left_percent = max(2, min(98, porcentaje))  # keep car visible
-    html = f"""
-    <div style="position:relative;width:{width};height:36px;background:#222;border-radius:10px;padding:4px;overflow:hidden;">
-        <div style="position:absolute;left:0;top:0;height:100%;width:{porcentaje}%;background:rgba(34,197,94,0.18);border-radius:8px;"></div>
-        <div style="position:absolute;left:{left_percent}%;top:3px;font-size:22px;transform:translateX(-50%);transition:left .4s ease;">🚗</div>
-        <div style="position:absolute;right:8px;top:6px;font-size:18px;">🏁</div>
-    </div>
-    """
-    st.markdown(html, unsafe_allow_html=True)
-
-# ---------------------------
-# Página
-# ---------------------------
-st.set_page_config(page_title="Carrera", layout="wide")
-
-# ---------- Sidebar: control para mostrar Admin ----------
+# =========================
+# UI: Sidebar (Admin hidden by checkbox)
+# =========================
 show_admin = st.sidebar.checkbox("🔐 Mostrar panel administrador")
-# Note: panel admin hidden by default; when checked, login/auth appears.
 
-# ---------- Admin area (hidden until checkbox) ----------
 if show_admin:
     st.sidebar.header("Administrador")
     if "admin_authenticated" not in st.session_state:
@@ -268,24 +227,21 @@ if show_admin:
         admin_user = st.sidebar.text_input("Usuario (admin)")
         admin_pass = st.sidebar.text_input("Contraseña (admin)", type="password")
         if st.sidebar.button("Iniciar sesión como admin"):
-            # Cambia credenciales aquí si quieres
+            # credenciales por defecto (modificar si deseas)
             if admin_user == "Grupo5" and admin_pass == "2025":
                 st.session_state.admin_authenticated = True
                 st.sidebar.success("Autenticado como admin")
             else:
                 st.sidebar.error("Credenciales incorrectas")
     else:
-        # Admin authenticated: show full admin controls
         fs = ensure_state_keys(load_state())
 
-        # Organizer name
         organizer = st.sidebar.text_input("Nombre de quien inicia el programa:", value=fs.get("organizer") or "")
 
-        # Players connected table
         st.sidebar.markdown("### 👥 Jugadores conectados")
         players_list = []
         for name, info in fs.get("players_info", {}).items():
-            joined_ts = info.get("joined", None)
+            joined_ts = info.get("joined")
             joined_str = time.strftime("%H:%M:%S", time.localtime(joined_ts)) if joined_ts else "—"
             players_list.append({
                 "Jugador": name,
@@ -300,7 +256,6 @@ if show_admin:
             st.sidebar.info("No hay jugadores conectados")
 
         st.sidebar.markdown("---")
-        # Start race
         if st.sidebar.button("🚀 Iniciar carrera (confirmar todos conectados)"):
             if not organizer.strip():
                 st.sidebar.warning("Ingrese el nombre del organizador antes de iniciar.")
@@ -310,67 +265,59 @@ if show_admin:
                 save_state(fs)
                 st.sidebar.success("Carrera iniciada")
 
-        # Reset
         if st.sidebar.button("🧹 Limpiar TODOS los registros"):
             reset_all()
             st.sidebar.success("Registros limpiados")
 
         st.sidebar.markdown("---")
-        # ----- Auditoría (filterable) -----
         st.sidebar.markdown("### 🗂 Auditoría (respuestas)")
         answers = load_answers()
         if answers:
-            # list unique players
             nombres = sorted(list({a.get("jugador","") for a in answers if a.get("jugador","")}))
-            nombres = [n for n in nombres if n]
             selected = st.sidebar.selectbox("Filtrar por jugador", ["(Todos)"] + nombres)
-            # build df
             df_a = pd.DataFrame(answers)
-            # convert timestamp to readable
             if "timestamp" in df_a.columns:
                 df_a = df_a.copy()
                 df_a["hora"] = pd.to_datetime(df_a["timestamp"], unit="s").dt.strftime("%Y-%m-%d %H:%M:%S")
-            # apply filter
             if selected and selected != "(Todos)":
                 df_a = df_a[df_a["jugador"] == selected]
-            # show limited columns
-            cols_to_show = []
+            cols = []
             if "hora" in df_a.columns:
-                cols_to_show.append("hora")
-            for col in ["jugador", "pregunta_idx", "selected", "correct"]:
-                if col in df_a.columns:
-                    cols_to_show.append(col)
-            if cols_to_show:
-                st.sidebar.dataframe(df_a[cols_to_show].sort_values(by="hora", ascending=False).reset_index(drop=True), height=220)
-                csv = df_a[cols_to_show].to_csv(index=False).encode("utf-8")
+                cols.append("hora")
+            for c in ["jugador", "pregunta_idx", "selected", "correct"]:
+                if c in df_a.columns:
+                    cols.append(c)
+            if cols:
+                st.sidebar.dataframe(df_a[cols].sort_values(by="hora", ascending=False).reset_index(drop=True), height=220)
+                csv = df_a[cols].to_csv(index=False).encode("utf-8")
                 st.sidebar.download_button("Exportar auditoría (CSV)", data=csv, file_name="auditoria.csv", mime="text/csv")
             else:
-                st.sidebar.info("No hay columnas de auditoría para mostrar.")
+                st.sidebar.info("Sin columnas de auditoría para mostrar.")
         else:
             st.sidebar.info("No hay registros de auditoría aún.")
 
         st.sidebar.markdown("---")
-        # ----- Top 3 and global progress (admin only) -----
         st.sidebar.markdown("## 🏆 Top 3 (global)")
         fs2 = ensure_state_keys(load_state())
         ranking_arr = []
         for n, info in fs2.get("players_info", {}).items():
-            tiempo_val = info.get("tiempo", None)
             ranking_arr.append({
                 "Jugador": n,
                 "Puntos": info.get("points", 0),
                 "Aciertos": info.get("aciertos", 0),
-                "Tiempo_raw": tiempo_val  # store raw for sorting
+                "Tiempo_raw": info.get("tiempo", None)
             })
         if ranking_arr:
             df_r = pd.DataFrame(ranking_arr)
-            # sorting: map non-int time to large number so unfinished go below
-            def map_time_for_sort(x):
-                return x if (isinstance(x, int) or isinstance(x, float)) else 999999
-            df_r = df_r.sort_values(by=["Puntos", "Tiempo_raw"], ascending=[False, True], key=lambda col: col.map(map_time_for_sort) if col.name=="Tiempo_raw" else col)
-            # Add formatted time column
+            # ordenar: no-int tiempo => valor grande para que queden al final
+            df_r = df_r.sort_values(
+                by=["Puntos", "Tiempo_raw"],
+                ascending=[False, True],
+                key=lambda col: col.map(lambda x: x if (isinstance(x, int) or isinstance(x,float)) else 999999)
+            )
             df_r["Tiempo"] = df_r["Tiempo_raw"].apply(lambda t: format_seconds_to_mmss(t) if (t is not None) else "—")
             st.sidebar.table(df_r[["Jugador", "Puntos", "Aciertos", "Tiempo"]].head(3))
+
             st.sidebar.markdown("## 🌍 Progreso global")
             for row in df_r.itertuples(index=False):
                 progreso = min(row.Puntos / POINTS_TO_FINISH, 1.0) if POINTS_TO_FINISH>0 else 0
@@ -379,16 +326,18 @@ if show_admin:
         else:
             st.sidebar.info("No hay ranking aún.")
 
-# ---------- Main (Jugador) ----------
+# =========================
+# Main: área del jugador (simplificada)
+# =========================
 st.header("Jugador")
 nombre = st.text_input("Ingresa tu nombre para unirte:", key="player_name_input")
 
 if nombre and nombre.strip():
     add_player(nombre.strip())
 
-# Show global status (simple)
 fs_main = ensure_state_keys(load_state())
 inicio_global = fs_main.get("inicio", None)
+
 if inicio_global:
     tiempo_total = QUESTION_TIME * len(questions)
     tiempo_pasado = int(time.time() - inicio_global)
@@ -397,26 +346,28 @@ if inicio_global:
 else:
     st.info("⏳ Esperando que el organizador inicie la carrera...")
 
-# If player entered name -> show quiz (no big progress blocks)
+# Mostrar pregunta y manejar respuestas
 if nombre and nombre.strip():
     jugador = st.session_state.jugadores.get(nombre.strip())
     if not jugador:
-        st.warning("Registro pendiente; intenta recargar la página.")
+        st.warning("Registro pendiente; recarga la página si no aparece.")
     else:
-        # show question only if started and time remains and not finished
         if inicio_global and tiempo_rest > 0 and not jugador.get("fin", False):
             idx = jugador.get("preg", 0) % len(questions)
             qdata = questions[idx]
             st.subheader(f"Pregunta #{idx+1}")
             st.write(qdata["q"])
-            selection = st.radio("Selecciona una opción:", qdata["options"], key=f"radio_{nombre.strip()}_{idx}")
-            if st.button("Enviar respuesta", key=f"submit_{nombre.strip()}_{idx}"):
-                correcto = selection == qdata["correct"]
+            opciones = qdata["options"]
+            key_radio = f"radio_{nombre.strip()}_{idx}"
+            seleccion = st.radio("Selecciona una opción:", opciones, key=key_radio)
+            submit_key = f"submit_{nombre.strip()}_{idx}"
+            if st.button("Enviar respuesta", key=submit_key):
+                correcto = seleccion == qdata["correct"]
                 entry = {
                     "timestamp": int(time.time()),
                     "jugador": nombre.strip(),
                     "pregunta_idx": idx,
-                    "selected": selection,
+                    "selected": seleccion,
                     "correct": correcto
                 }
                 append_answer(entry)
@@ -427,13 +378,13 @@ if nombre and nombre.strip():
                 else:
                     st.error("❌ Incorrecto")
                 jugador["preg"] = jugador.get("preg", 0) + 1
-                # check finish
+                # revisar meta
                 if jugador.get("points", 0) >= POINTS_TO_FINISH:
                     jugador["fin"] = True
                     jugador["tiempo"] = int(time.time() - inicio_global)
                     st.balloons()
                     st.success("🏁 ¡Llegaste a la meta!")
-                # persist player state
+                # persistir jugador
                 fs_p = ensure_state_keys(load_state())
                 fs_p.setdefault("players_info", {})
                 fs_p["players_info"][nombre.strip()] = jugador
@@ -450,9 +401,5 @@ if nombre and nombre.strip():
             else:
                 st.warning("Tiempo global finalizado o no disponible.")
 
-# ---------- TOP & PROGRESO visible en MAIN? (we keep main minimal per request)
-# The Top3 and global progress are intentionally *only* in admin sidebar (when admin opens it).
-# If you want to also show a small top3 in the main area, we can add it here — currently omitted.
-
-# Footer: small help
-st.caption("Nota: El panel administrador está oculto por defecto. Marca 'Mostrar panel administrador' en la barra lateral para acceder a controles y auditoría (requiere login admin).")
+# Nota: Top3 y progreso global están disponibles en el panel admin (cuando lo muestras).
+st.caption("El panel administrador está oculto por defecto. Marca 'Mostrar panel administrador' en la barra lateral para acceder a los controles y auditoría (requiere login admin).")
