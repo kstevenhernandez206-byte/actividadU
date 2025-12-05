@@ -1,4 +1,4 @@
-# carrera.py — Formulario Inteligencia Artificial y Sistema Cibernéticos
+# carrera.py — Formulario IA y Sistemas Cibernéticos (versión animada y corregida)
 # Requisitos:
 #   pip install streamlit streamlit-autorefresh pandas requests
 
@@ -20,7 +20,7 @@ st.set_page_config(
 BASE_DIR = os.path.dirname(__file__)
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 ANSWERS_FILE = os.path.join(BASE_DIR, "answers.json")
-SPACESHIP_URL = "https://pngimg.com/uploads/spaceship/spaceship_PNG52.png"
+SPACESHIP_URL = "https://upload.wikimedia.org/wikipedia/commons/3/33/Spaceship_icon.png"
 
 # ---------- PREGUNTAS ----------
 questions = [
@@ -51,8 +51,8 @@ questions = [
 ]
 
 TOTAL_QUESTIONS = len(questions)
-QUESTION_TIME = 50  # 50 segundos por pregunta
-CONTINUE_TIME = 10   # 10 segundos pantalla continuar
+QUESTION_TIME = 50
+CONTINUE_TIME = 10
 POINTS_PER_CORRECT = 10
 MAX_POINTS = POINTS_PER_CORRECT * TOTAL_QUESTIONS
 
@@ -175,30 +175,28 @@ if player_name and st.button("Ingresar"):
     save_state(fs)
     st.session_state.jugadores[player_name] = fs["players_info"][player_name]
 
-# No avanzar hasta que admin inicie carrera
 fs_main = ensure_state_keys(load_state())
 inicio_global = fs_main.get("inicio", None)
 if not inicio_global:
     st.info("⏳ Esperando al organizador para iniciar la carrera...")
     st.stop()
 
-# Cargar jugador
 player = st.session_state.jugadores.get(player_name)
 if not player:
     st.warning("Registro pendiente; recarga la página.")
     st.stop()
 
-# Refresco rápido
+# Refresco de 0.7 segundos
 st_autorefresh(interval=700, key="auto_refresh")
 
-# Mostrar tiempo global restante
+# Tiempo restante
 tiempo_total = QUESTION_TIME * TOTAL_QUESTIONS
 pasado = int(time.time() - inicio_global)
 tiempo_restante = max(0, tiempo_total - pasado)
 st.info(f"⏳ Tiempo global restante: {format_seconds_to_mmss(tiempo_restante)}")
 
-# ---------- PREGUNTA / CONTINUAR ----------
-preg_idx = player.get("preg", 0)
+# Pregunta / Continuar
+preg_idx = player.get("preg",0)
 if preg_idx >= TOTAL_QUESTIONS:
     player["fin"] = True
     player["tiempo"] = int(time.time() - inicio_global)
@@ -206,10 +204,9 @@ if preg_idx >= TOTAL_QUESTIONS:
     save_state(fs_main)
     st.success("Has terminado la carrera.")
 else:
-    last_t = st.session_state.last_answer_time.get(player_name, 0)
+    last_t = st.session_state.last_answer_time.get(player_name,0)
     in_continue = last_t and (time.time()-last_t < CONTINUE_TIME)
     if in_continue:
-        # Pantalla continuar
         st.success("Resultado registrado ✅")
         last_ans = [a for a in load_answers() if a.get("jugador")==player_name][-1]
         if last_ans.get("correct"):
@@ -220,7 +217,6 @@ else:
             st.session_state.last_answer_time[player_name] = None
             st.rerun()
     else:
-        # Mostrar pregunta
         qobj = questions[preg_idx]
         st.markdown(f"**Pregunta #{preg_idx+1}:** {qobj['q']}")
         selection = st.radio("", qobj["options"], key=f"radio_{player_name}_{preg_idx}", label_visibility="collapsed")
@@ -239,16 +235,22 @@ else:
             st.session_state.last_answer_time[player_name] = time.time()
             st.rerun()
 
-# ---------- BARRA DE PROGRESO ----------
+# ---------- Barra de progreso animada ----------
 display_progress = player.get("points",0)/MAX_POINTS if MAX_POINTS>0 else 0.0
 display_percent = max(0.0,min(1.0,display_progress))*100
 spaceship_html = f'<img src="{SPACESHIP_URL}" style="width:34px;height:34px;object-fit:contain"/>' 
 
 st.markdown(f"""
+<style>
+@keyframes moveShip {{
+  from {{ left:0%; }}
+  to {{ left:{display_percent}%; }}
+}}
+</style>
 <div style="position:fixed; bottom:0; left:0; width:100%; background:#000; padding:6px 12px;">
     <div style="background:#111; height:24px; border-radius:4px; position:relative;">
         <div style="background:#00d0ff; width:{display_percent}%; height:100%; border-radius:4px;"></div>
-        <div style="position:absolute; left:calc({display_percent}% - 17px); top:0;">{spaceship_html}</div>
+        <div style="position:absolute; top:0; animation:moveShip 0.5s linear forwards;">{spaceship_html}</div>
     </div>
     <div style="text-align:center; font-size:14px; color:#fff;">
         Puntos: {player.get("points",0)} — Pregunta {min(player.get('preg',0)+1,TOTAL_QUESTIONS)}/{TOTAL_QUESTIONS}
