@@ -1,17 +1,9 @@
-# carrera_final.py — Integrado con auto-refresh, barra, admin y 8 preguntas
-
+# carrera.py — Versión actualizada con 8 preguntas, barra progresiva y nave 🛸
 import streamlit as st
 import time
 import pandas as pd
 import os
 import json
-from datetime import timedelta
-from streamlit_autorefresh import st_autorefresh
-
-# ---------------------------
-# Auto-refresh cada 0.5 segundos
-# ---------------------------
-st_autorefresh(interval=500, limit=None, key="autorefresh")
 
 # ---------------------------
 # Archivos persistentes
@@ -48,98 +40,98 @@ def append_answer(entry):
     save_answers(answers)
 
 # ---------------------------
-# Preguntas (8)
+# Preguntas
 # ---------------------------
 questions = [
     {
-        "q": "¿Qué define Russell y Norvig (2021) como propósito central de la inteligencia artificial?",
+        "q": "¿Cuál es el propósito central de la inteligencia artificial según Russell y Norvig (2021)?",
         "options": [
-            "Construir agentes capaces de actuar racionalmente",
-            "Generar entretenimiento digital",
-            "Sustituir totalmente al ser humano",
-            "Crear máquinas que imiten emociones humanas"
+            "Reemplazar completamente al ser humano en todas las tareas",
+            "Crear sistemas que imiten emociones humanas",
+            "Construir agentes capaces de actuar racionalmente en un entorno",
+            "Desarrollar máquinas con conciencia propia"
         ],
-        "correct": "Construir agentes capaces de actuar racionalmente"
+        "correct": "Construir agentes capaces de actuar racionalmente en un entorno"
     },
     {
-        "q": "Según Wiener (2019), la cibernética estudia principalmente:",
+        "q": "Los sistemas cibernéticos se caracterizan principalmente por:",
         "options": [
-            "La historia de la informática",
-            "La programación de videojuegos",
-            "La economía digital",
-            "Los mecanismos de control en sistemas naturales y artificiales"
+            "Procesos de control, retroalimentación y comunicación",
+            "La capacidad de almacenar grandes volúmenes de datos",
+            "La sustitución de tareas humanas por robots",
+            "La creación de redes sociales digitales"
         ],
-        "correct": "Los mecanismos de control en sistemas naturales y artificiales"
+        "correct": "Procesos de control, retroalimentación y comunicación"
     },
     {
-        "q": "¿Cuál es uno de los riesgos de los sistemas cibernéticos autónomos?",
+        "q": "Según Brynjolfsson y McAfee (2016), uno de los principales riesgos de la automatización laboral es:",
         "options": [
-            "Incremento de la creatividad humana",
-            "Reducción de costos operativos",
-            "Fallos en cascada y accesos no autorizados",
-            "Mejora en diagnósticos médicos"
+            "La reducción de costos operativos",
+            "El aumento de la precisión en tareas repetitivas",
+            "La mejora en la calidad de los servicios",
+            "El desplazamiento de empleos tradicionales"
         ],
-        "correct": "Fallos en cascada y accesos no autorizados"
+        "correct": "El desplazamiento de empleos tradicionales"
     },
     {
-        "q": "Brynjolfsson y McAfee (2016) señalan que la automatización laboral impulsa principalmente:",
+        "q": "El sesgo algorítmico en la inteligencia artificial ocurre cuando:",
         "options": [
-            "La desaparición de la comunicación digital",
-            "Incrementos en la eficiencia y productividad",
-            "La eliminación de la ética en el trabajo",
-            "La reducción de la alfabetización digital"
+            "Los sistemas carecen de supervisión humana",
+            "Los algoritmos aprenden de datos históricos con prejuicios",
+            "Se utilizan demasiados recursos computacionales",
+            "Los usuarios no aceptan términos de privacidad"
         ],
-        "correct": "Incrementos en la eficiencia y productividad"
+        "correct": "Los algoritmos aprenden de datos históricos con prejuicios"
     },
     {
-        "q": "Un desafío ético crítico en la inteligencia artificial es:",
+        "q": "Castells (2013) afirma que en la sociedad contemporánea la comunicación en red es el espacio donde se construyen:",
         "options": [
-            "La falta de creatividad en algoritmos",
-            "La ausencia de hardware avanzado",
-            "El sesgo algorítmico en la toma de decisiones",
-            "La escasez de datos disponibles"
-        ],
-        "correct": "El sesgo algorítmico en la toma de decisiones"
-    },
-    {
-        "q": "Según Jobin, Ienca y Vayena (2019), los marcos éticos internacionales coinciden en la importancia de:",
-        "options": [
-            "Innovación, velocidad y competitividad",
-            "Transparencia, justicia y responsabilidad",
-            "Exclusividad, privacidad y lucro",
-            "Entretenimiento y diseño"
-        ],
-        "correct": "Transparencia, justicia y responsabilidad"
-    },
-    {
-        "q": "Castells (2013) afirma que la comunicación en red es el espacio donde se construyen:",
-        "options": [
-            "Estrategias de marketing empresarial",
-            "Juegos interactivos en línea",
+            "Exclusivamente vínculos económicos",
             "Relaciones de poder, identidad y participación social",
-            "Programas de entretenimiento digital"
+            "Procesos de automatización laboral",
+            "Sistemas de retroalimentación tecnológica"
         ],
         "correct": "Relaciones de poder, identidad y participación social"
     },
     {
-        "q": "Las redes sociales funcionan como sistemas cibernéticos porque:",
+        "q": "Tufekci (2015) sostiene que los algoritmos de redes sociales tienden a priorizar:",
         "options": [
-            "Sustituyen totalmente la interacción presencial",
-            "Garantizan siempre información verificada",
-            "Son espacios de ocio digital",
-            "Operan mediante retroalimentación entre usuarios, algoritmos e información"
+            "Contenidos que generan mayor interacción emocional",
+            "Información científica y verificada",
+            "Publicaciones neutrales y objetivas",
+            "Mensajes institucionales regulados"
         ],
-        "correct": "Operan mediante retroalimentación entre usuarios, algoritmos e información"
+        "correct": "Contenidos que generan mayor interacción emocional"
+    },
+    {
+        "q": "Wardle y Derakhshan (2017) denominan al fenómeno de la desinformación digital como:",
+        "options": [
+            "Fake news",
+            "Data bias",
+            "Information disorder",
+            "Digital misinformation"
+        ],
+        "correct": "Information disorder"
+    },
+    {
+        "q": "Según la UNESCO (2021), para lograr una verdadera inclusión digital es necesario considerar:",
+        "options": [
+            "La creación de más redes sociales globales",
+            "La sustitución de docentes por plataformas digitales",
+            "Exclusivamente la reducción de costos tecnológicos",
+            "Alfabetización tecnológica, asequibilidad, conectividad y accesibilidad"
+        ],
+        "correct": "Alfabetización tecnológica, asequibilidad, conectividad y accesibilidad"
     }
 ]
 
 # ---------------------------
 # Parámetros
 # ---------------------------
-QUESTION_TIME = 50  # segundos por pregunta
-CONTINUE_TIME = 10  # segundos antes de pasar a la siguiente
-POINTS_PER_CORRECT = 10
-POINTS_TO_FINISH = 50
+QUESTION_TIME = 50
+TRANSITION_TIME = 10
+POINTS_PER_CORRECT = 1
+TOTAL_QUESTIONS = len(questions)
 
 # ---------------------------
 # Helpers
@@ -180,14 +172,12 @@ def add_player(name):
         fs["jugadores"].append(name)
     fs["players_info"].setdefault(name, {
         "points": 0,
-        "aciertos": 0,
         "preg": 0,
         "fin": False,
         "tiempo": None,
         "joined": time.time()
     })
     save_state(fs)
-    # sync session state
     st.session_state.jugadores[name] = fs["players_info"][name]
 
 def reset_all():
@@ -197,16 +187,16 @@ def reset_all():
     st.session_state.answers = []
 
 # ---------------------------
-# Barra carretera HTML (carrito)
+# Barra progresiva con 🛸 y 🌕
 # ---------------------------
-def barra_carretera_html(progreso, width="100%"):
-    porcentaje = max(0.0, min(1.0, float(progreso))) * 100
-    left_percent = max(2, min(98, porcentaje))  # keep car visible
+def barra_progreso_html(correctas, width="100%"):
+    porcentaje = (correctas / TOTAL_QUESTIONS) * 100
+    left_percent = max(2, min(98, porcentaje))
     html = f"""
     <div style="position:relative;width:{width};height:36px;background:#222;border-radius:10px;padding:4px;overflow:hidden;">
         <div style="position:absolute;left:0;top:0;height:100%;width:{porcentaje}%;background:rgba(34,197,94,0.18);border-radius:8px;"></div>
-        <div style="position:absolute;left:{left_percent}%;top:3px;font-size:22px;transform:translateX(-50%);transition:left .4s ease;">🚗</div>
-        <div style="position:absolute;right:8px;top:6px;font-size:18px;">🏁</div>
+        <div style="position:absolute;left:{left_percent}%;top:3px;font-size:22px;transform:translateX(-50%);transition:left .4s ease;">🛸</div>
+        <div style="position:absolute;right:8px;top:6px;font-size:18px;">🌕</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
@@ -214,10 +204,10 @@ def barra_carretera_html(progreso, width="100%"):
 # ---------------------------
 # Página
 # ---------------------------
-st.set_page_config(page_title="Formulario de Inteligencia Artificial y Sistema Cibernéticos", layout="wide")
-st.title("Formulario de Inteligencia Artificial y Sistema Cibernéticos")
+st.set_page_config(page_title="Formulario de Inteligencia Artificial y Sistemas Cibernéticos", layout="wide")
+st.title("Formulario de Inteligencia Artificial y Sistemas Cibernéticos")
 
-# ---------- Admin area (siempre visible)
+# ---------- Admin area (siempre visible) ----------
 st.sidebar.header("Administrador")
 if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
@@ -235,25 +225,8 @@ else:
     fs = ensure_state_keys(load_state())
     organizer = st.sidebar.text_input("Nombre de quien inicia el programa:", value=fs.get("organizer") or "")
 
-    # Tabla jugadores
-    players_list = []
-    for name, info in fs.get("players_info", {}).items():
-        joined_ts = info.get("joined", None)
-        joined_str = time.strftime("%H:%M:%S", time.localtime(joined_ts)) if joined_ts else "—"
-        players_list.append({
-            "Jugador": name,
-            "Aciertos": info.get("aciertos", 0),
-            "Puntos": info.get("points", 0),
-            "Conectado": joined_str
-        })
-    if players_list:
-        df_players = pd.DataFrame(players_list).sort_values("Conectado")
-        st.sidebar.dataframe(df_players, height=220)
-    else:
-        st.sidebar.info("No hay jugadores conectados")
-
     # Start race
-    if st.sidebar.button("🚀 Iniciar carrera (confirmar todos conectados)"):
+    if st.sidebar.button("🚀 Iniciar carrera"):
         if not organizer.strip():
             st.sidebar.warning("Ingrese el nombre del organizador antes de iniciar.")
         else:
@@ -276,21 +249,18 @@ else:
         selected = st.sidebar.selectbox("Filtrar por jugador", ["(Todos)"] + nombres)
         df_a = pd.DataFrame(answers)
         if "timestamp" in df_a.columns:
-            df_a = df_a.copy()
             df_a["hora"] = pd.to_datetime(df_a["timestamp"], unit="s").dt.strftime("%Y-%m-%d %H:%M:%S")
         if selected and selected != "(Todos)":
             df_a = df_a[df_a["jugador"] == selected]
-        cols_to_show = ["hora","jugador","pregunta_idx","selected","correct"]
-        cols_exist = [c for c in cols_to_show if c in df_a.columns]
-        if cols_exist:
-            st.sidebar.dataframe(df_a[cols_exist].sort_values(by="hora", ascending=False).reset_index(drop=True), height=220)
-            csv = df_a[cols_exist].to_csv(index=False).encode("utf-8")
+        cols_to_show = [c for c in ["hora","jugador","pregunta_idx","selected","correct"] if c in df_a.columns]
+        if cols_to_show:
+            st.sidebar.dataframe(df_a[cols_to_show].sort_values(by="hora", ascending=False).reset_index(drop=True), height=220)
+            csv = df_a[cols_to_show].to_csv(index=False).encode("utf-8")
             st.sidebar.download_button("Exportar auditoría (CSV)", data=csv, file_name="auditoria.csv", mime="text/csv")
     else:
         st.sidebar.info("No hay registros de auditoría aún.")
 
 # ---------- Main (Jugador) ----------
-st.header("Jugador")
 nombre = st.text_input("Ingresa tu nombre para unirte:", key="player_name_input")
 if nombre and nombre.strip():
     add_player(nombre.strip())
@@ -298,18 +268,21 @@ if nombre and nombre.strip():
 fs_main = ensure_state_keys(load_state())
 inicio_global = fs_main.get("inicio", None)
 if inicio_global:
-    tiempo_total = QUESTION_TIME * len(questions)
+    tiempo_total = QUESTION_TIME * TOTAL_QUESTIONS
     tiempo_pasado = int(time.time() - inicio_global)
     tiempo_rest = max(0, tiempo_total - tiempo_pasado)
     st.info(f"⏳ Tiempo global restante: {tiempo_rest} s")
 else:
     st.info("⏳ Esperando que el organizador inicie la carrera...")
 
+# Quiz
 if nombre and nombre.strip():
     jugador = st.session_state.jugadores.get(nombre.strip())
-    if jugador:
+    if not jugador:
+        st.warning("Registro pendiente; intenta recargar la página.")
+    else:
         if inicio_global and tiempo_rest > 0 and not jugador.get("fin", False):
-            idx = jugador.get("preg", 0) % len(questions)
+            idx = jugador.get("preg", 0) % TOTAL_QUESTIONS
             qdata = questions[idx]
             st.subheader(f"Pregunta #{idx+1}")
             st.write(qdata["q"])
@@ -325,33 +298,29 @@ if nombre and nombre.strip():
                 }
                 append_answer(entry)
                 if correcto:
-                    st.success("✅ Correcto (+10 pts)")
-                    jugador["points"] += POINTS_PER_CORRECT
-                    jugador["aciertos"] += 1
+                    st.success("✅ Correcto")
+                    jugador["points"] = jugador.get("points",0) + 1
                 else:
                     st.error("❌ Incorrecto")
-                jugador["preg"] += 1
-                if jugador["points"] >= POINTS_TO_FINISH:
+                jugador["preg"] = jugador.get("preg",0) + 1
+                if jugador.get("preg",0) >= TOTAL_QUESTIONS:
                     jugador["fin"] = True
                     jugador["tiempo"] = int(time.time() - inicio_global)
                     st.balloons()
                     st.success("🏁 ¡Llegaste a la meta!")
                 fs_p = ensure_state_keys(load_state())
+                fs_p.setdefault("players_info", {})
                 fs_p["players_info"][nombre.strip()] = jugador
+                if nombre.strip() not in fs_p.get("jugadores", []):
+                    fs_p.setdefault("jugadores", []).append(nombre.strip())
                 save_state(fs_p)
+        elif jugador.get("fin", False):
+            st.success("Has terminado la carrera. ¡Buen trabajo!")
+            if jugador.get("tiempo") is not None:
+                st.info(f"Tiempo total: {format_seconds_to_mmss(jugador.get('tiempo'))}")
         else:
-            if not inicio_global:
-                st.info("La carrera no ha iniciado. Espera al organizador.")
-            elif jugador.get("fin", False):
-                st.success("Has terminado la carrera. ¡Buen trabajo!")
-                if jugador.get("tiempo") is not None:
-                    st.info(f"Tiempo total: {format_seconds_to_mmss(jugador.get('tiempo'))}")
-            else:
-                st.warning("Tiempo global finalizado o no disponible.")
+            st.warning("Tiempo global finalizado o no disponible.")
 
-# ---------- Barra global abajo ----------
-if nombre and jugador:
-    progreso = min(jugador.get("points", 0) / POINTS_TO_FINISH, 1.0) if POINTS_TO_FINISH>0 else 0
-    barra_carretera_html(progreso, width="100%")
-
-st.caption("Nota: El panel administrador siempre visible en la barra lateral. Auditoría y ranking requieren login admin.")
+# Barra de progreso
+if nombre and nombre.strip() and jugador:
+    barra_progreso_html(jugador.get("points",0))
