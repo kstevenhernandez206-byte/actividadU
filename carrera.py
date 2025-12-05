@@ -1,6 +1,12 @@
-# carrera.py — Versión FINAL con autorefresh (0.5s), 8 preguntas, 60s por pregunta
-# Opción C: Admin oculto, auditoría filtrable, top3 y progreso global en admin.
-# Nota: requiere instalar: pip install streamlit-autorefresh
+# carrera.py — Versión FINAL DEFINITIVA
+# - Autorefresh 0.5s SIEMPRE
+# - 8 preguntas, 60s por pregunta
+# - Termina al responder 8 preguntas (NO por puntos)
+# - Barra del carro por usuario
+# - Botón "Continuar → Pregunta X", con avance automático a los 20s
+# - Admin oculto con auditoría filtrable
+# - Jugador no ve tiempo global si ya terminó
+# - Requiere: pip install streamlit-autorefresh
 
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
@@ -10,11 +16,10 @@ import os
 import json
 
 # =========================
-# Configuración inicial
+# Auto-refresh
 # =========================
 st.set_page_config(page_title="Carrera", layout="wide")
-# Auto-refresh cada 500 ms (0.5 s) — **SIEMPRE** activo (tal como pediste)
-st_autorefresh(interval=500, key="auto_refresh")
+st_autorefresh(interval=500, key="auto_refresh")   # 0.5s refresh
 
 # =========================
 # Archivos persistentes
@@ -27,7 +32,7 @@ def load_state():
     try:
         with open(STATE_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except:
         return {"inicio": None, "jugadores": [], "players_info": {}, "organizer": None}
 
 def save_state(data):
@@ -38,7 +43,7 @@ def load_answers():
     try:
         with open(ANSWERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except:
         return []
 
 def save_answers(data):
@@ -46,19 +51,12 @@ def save_answers(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 def append_answer(entry):
-    ans = load_answers()
-    ans.append(entry)
-    save_answers(ans)
+    answers = load_answers()
+    answers.append(entry)
+    save_answers(answers)
 
 # =========================
-# Parámetros de la carrera
-# =========================
-QUESTION_TIME = 60               # 60 segundos por pregunta
-POINTS_PER_CORRECT = 10
-POINTS_TO_FINISH = 50
-
-# =========================
-# Preguntas (8 seleccionadas)
+# Preguntas (8)
 # =========================
 questions = [
     {
@@ -143,10 +141,11 @@ questions = [
     }
 ]
 
-TOTAL_TIME = QUESTION_TIME * len(questions)  # tiempo total de la sesión
+QUESTION_TIME = 60       # tiempo por pregunta
+AUTO_CONTINUE_TIME = 20 # tiempo para avanzar si no presiona continuar
 
 # =========================
-# Helpers / utilidades
+# Utilidades
 # =========================
 def ensure_state_keys(fs):
     fs.setdefault("inicio", None)
@@ -164,38 +163,53 @@ def format_seconds_to_mmss(s):
     ss = s % 60
     return f"{mm:02d}:{ss:02d}"
 
-# Barra visual tipo pista (HTML)
-def barra_carretera_html(progreso, width="100%"):
-    porcentaje = max(0.0, min(1.0, float(progreso))) * 100
-    left = max(2, min(98, porcentaje))
-    html = f'''
-    <div style="position:relative;width:{width};height:36px;background:#222;border-radius:10px;padding:4px;overflow:hidden;">
-      <div style="position:absolute;left:0;top:0;height:100%;width:{porcentaje}%;background:rgba(34,197,94,0.18);border-radius:8px;"></div>
-      <div style="position:absolute;left:{left}%;top:3px;font-size:22px;transform:translateX(-50%);transition:left .35s ease;">🚗</div>
-      <div style="position:absolute;right:8px;top:6px;font-size:18px;">🏁</div>
+def barra_carretera_html(progreso):
+    """Barra individual por jugador (más pequeña y separada)."""
+    porcentaje = max(0.0, min(1.0, progreso)) * 100
+    left = max(3, min(97, porcentaje))
+    html = f"""
+    <div style="margin-top:15px;margin-bottom:25px;">
+        <div style="position:relative;width:100%;height:28px;background:#222;
+                    border-radius:10px;padding:3px;overflow:hidden;">
+            <div style="position:absolute;left:0;top:0;height:100%;
+                        width:{porcentaje}%;background:rgba(34,197,94,0.25);
+                        border-radius:10px;"></div>
+
+            <div style="position:absolute;left:{left}%;top:2px;
+                        font-size:20px;transform:translateX(-50%);
+                        transition:left .35s ease;">🚗</div>
+
+            <div style="position:absolute;right:6px;top:4px;font-size:16px;">🏁</div>
+        </div>
     </div>
-    '''
+    """
     st.markdown(html, unsafe_allow_html=True)
 
 # =========================
-# Estado en memoria (session)
+# Estado local
 # =========================
 if "jugadores" not in st.session_state:
     st.session_state.jugadores = {}
+
 if "answers" not in st.session_state:
     st.session_state.answers = load_answers()
 
-# -------------------------
-# Funciones de jugador/admin
-# -------------------------
+# almacenar timestamp de respuesta para control de botón continuar
+if "last_answer_time" not in st.session_state:
+    st.session_state.last_answer_time = {}
+
+# =========================
+# Funciones principales
+# =========================
 def add_player(name):
     name = name.strip()
     if not name:
         return
     fs = ensure_state_keys(load_state())
+
     if name not in fs["jugadores"]:
         fs["jugadores"].append(name)
-    fs.setdefault("players_info", {})
+
     fs["players_info"].setdefault(name, {
         "points": 0,
         "aciertos": 0,
@@ -204,6 +218,7 @@ def add_player(name):
         "tiempo": None,
         "joined": time.time()
     })
+
     save_state(fs)
     st.session_state.jugadores[name] = fs["players_info"][name]
 
@@ -212,194 +227,218 @@ def reset_all():
     save_answers([])
     st.session_state.jugadores = {}
     st.session_state.answers = []
+    st.session_state.last_answer_time = {}
 
 # =========================
-# UI: Sidebar (Admin hidden by checkbox)
+# Sidebar: Admin oculto
 # =========================
 show_admin = st.sidebar.checkbox("🔐 Mostrar panel administrador")
 
 if show_admin:
     st.sidebar.header("Administrador")
+
     if "admin_authenticated" not in st.session_state:
         st.session_state.admin_authenticated = False
 
     if not st.session_state.admin_authenticated:
-        admin_user = st.sidebar.text_input("Usuario (admin)")
-        admin_pass = st.sidebar.text_input("Contraseña (admin)", type="password")
-        if st.sidebar.button("Iniciar sesión como admin"):
-            # credenciales por defecto (modificar si deseas)
-            if admin_user == "Grupo5" and admin_pass == "2025":
+        u = st.sidebar.text_input("Usuario (admin)")
+        p = st.sidebar.text_input("Contraseña (admin)", type="password")
+        if st.sidebar.button("Ingresar"):
+            if u == "Grupo5" and p == "2025":
                 st.session_state.admin_authenticated = True
-                st.sidebar.success("Autenticado como admin")
+                st.sidebar.success("Acceso concedido")
             else:
                 st.sidebar.error("Credenciales incorrectas")
     else:
         fs = ensure_state_keys(load_state())
 
-        organizer = st.sidebar.text_input("Nombre de quien inicia el programa:", value=fs.get("organizer") or "")
+        org = st.sidebar.text_input("Organizador:", value=fs.get("organizer") or "")
 
-        st.sidebar.markdown("### 👥 Jugadores conectados")
+        st.sidebar.markdown("### Jugadores conectados")
         players_list = []
-        for name, info in fs.get("players_info", {}).items():
-            joined_ts = info.get("joined")
-            joined_str = time.strftime("%H:%M:%S", time.localtime(joined_ts)) if joined_ts else "—"
+        for name, info in fs["players_info"].items():
             players_list.append({
                 "Jugador": name,
                 "Aciertos": info.get("aciertos", 0),
                 "Puntos": info.get("points", 0),
-                "Conectado": joined_str
+                "Conectado": time.strftime("%H:%M:%S", time.localtime(info.get("joined", 0)))
             })
         if players_list:
-            df_players = pd.DataFrame(players_list).sort_values("Conectado")
-            st.sidebar.dataframe(df_players, height=220)
+            st.sidebar.dataframe(pd.DataFrame(players_list), height=220)
         else:
-            st.sidebar.info("No hay jugadores conectados")
+            st.sidebar.info("No hay jugadores conectados aún.")
 
         st.sidebar.markdown("---")
-        if st.sidebar.button("🚀 Iniciar carrera (confirmar todos conectados)"):
-            if not organizer.strip():
-                st.sidebar.warning("Ingrese el nombre del organizador antes de iniciar.")
-            else:
-                fs["inicio"] = time.time()
-                fs["organizer"] = organizer
-                save_state(fs)
-                st.sidebar.success("Carrera iniciada")
+        if st.sidebar.button("🚀 Iniciar carrera"):
+            fs["inicio"] = time.time()
+            fs["organizer"] = org
+            save_state(fs)
+            st.sidebar.success("Carrera iniciada")
 
-        if st.sidebar.button("🧹 Limpiar TODOS los registros"):
+        if st.sidebar.button("🧹 Limpiar TODO"):
             reset_all()
-            st.sidebar.success("Registros limpiados")
+            st.sidebar.success("Sistema reiniciado")
 
         st.sidebar.markdown("---")
-        st.sidebar.markdown("### 🗂 Auditoría (respuestas)")
+        st.sidebar.markdown("### Auditoría")
         answers = load_answers()
+
         if answers:
-            nombres = sorted(list({a.get("jugador","") for a in answers if a.get("jugador","")}))
-            selected = st.sidebar.selectbox("Filtrar por jugador", ["(Todos)"] + nombres)
             df_a = pd.DataFrame(answers)
-            if "timestamp" in df_a.columns:
-                df_a = df_a.copy()
-                df_a["hora"] = pd.to_datetime(df_a["timestamp"], unit="s").dt.strftime("%Y-%m-%d %H:%M:%S")
-            if selected and selected != "(Todos)":
-                df_a = df_a[df_a["jugador"] == selected]
-            cols = []
-            if "hora" in df_a.columns:
-                cols.append("hora")
-            for c in ["jugador", "pregunta_idx", "selected", "correct"]:
-                if c in df_a.columns:
-                    cols.append(c)
-            if cols:
-                st.sidebar.dataframe(df_a[cols].sort_values(by="hora", ascending=False).reset_index(drop=True), height=220)
-                csv = df_a[cols].to_csv(index=False).encode("utf-8")
-                st.sidebar.download_button("Exportar auditoría (CSV)", data=csv, file_name="auditoria.csv", mime="text/csv")
-            else:
-                st.sidebar.info("Sin columnas de auditoría para mostrar.")
+            df_a["hora"] = pd.to_datetime(df_a["timestamp"], unit="s").dt.strftime("%H:%M:%S")
+
+            jugadores_a = sorted(df_a["jugador"].unique())
+            sel = st.sidebar.selectbox("Filtrar por jugador", ["(Todos)"] + jugadores_a)
+
+            if sel != "(Todos)":
+                df_a = df_a[df_a["jugador"] == sel]
+
+            st.sidebar.dataframe(df_a[["hora", "jugador", "pregunta_idx", "selected", "correct"]], height=220)
         else:
-            st.sidebar.info("No hay registros de auditoría aún.")
+            st.sidebar.info("Sin registros.")
 
         st.sidebar.markdown("---")
-        st.sidebar.markdown("## 🏆 Top 3 (global)")
-        fs2 = ensure_state_keys(load_state())
-        ranking_arr = []
-        for n, info in fs2.get("players_info", {}).items():
-            ranking_arr.append({
+        st.sidebar.markdown("### 🏆 Top 3 global")
+
+        ranking = []
+        for n, info in fs["players_info"].items():
+            ranking.append({
                 "Jugador": n,
                 "Puntos": info.get("points", 0),
                 "Aciertos": info.get("aciertos", 0),
-                "Tiempo_raw": info.get("tiempo", None)
+                "Tiempo_raw": info.get("tiempo")
             })
-        if ranking_arr:
-            df_r = pd.DataFrame(ranking_arr)
-            # ordenar: no-int tiempo => valor grande para que queden al final
+
+        if ranking:
+            df_r = pd.DataFrame(ranking)
             df_r = df_r.sort_values(
                 by=["Puntos", "Tiempo_raw"],
                 ascending=[False, True],
-                key=lambda col: col.map(lambda x: x if (isinstance(x, int) or isinstance(x,float)) else 999999)
+                key=lambda col: col.map(lambda x: x if isinstance(x, (int, float)) else 999999)
             )
-            df_r["Tiempo"] = df_r["Tiempo_raw"].apply(lambda t: format_seconds_to_mmss(t) if (t is not None) else "—")
+            df_r["Tiempo"] = df_r["Tiempo_raw"].apply(lambda t: format_seconds_to_mmss(t) if t else "—")
             st.sidebar.table(df_r[["Jugador", "Puntos", "Aciertos", "Tiempo"]].head(3))
 
-            st.sidebar.markdown("## 🌍 Progreso global")
-            for row in df_r.itertuples(index=False):
-                progreso = min(row.Puntos / POINTS_TO_FINISH, 1.0) if POINTS_TO_FINISH>0 else 0
+            st.sidebar.markdown("### 🌍 Progreso global")
+            for row in df_r.itertuples():
+                progreso = (row.Puntos / 80)  # 8 preguntas → 80 pts máx
                 st.sidebar.write(f"**{row.Jugador}** — {row.Puntos} pts")
-                barra_carretera_html(progreso, width="100%")
-        else:
-            st.sidebar.info("No hay ranking aún.")
+                barra_carretera_html(progreso)
 
 # =========================
-# Main: área del jugador (simplificada)
+# Main del jugador
 # =========================
 st.header("Jugador")
-nombre = st.text_input("Ingresa tu nombre para unirte:", key="player_name_input")
+
+nombre = st.text_input("Ingresa tu nombre:")
 
 if nombre and nombre.strip():
     add_player(nombre.strip())
 
-fs_main = ensure_state_keys(load_state())
-inicio_global = fs_main.get("inicio", None)
+fs = ensure_state_keys(load_state())
+inicio = fs.get("inicio")
+player = st.session_state.jugadores.get(nombre.strip()) if nombre else None
 
-if inicio_global:
-    tiempo_total = QUESTION_TIME * len(questions)
-    tiempo_pasado = int(time.time() - inicio_global)
-    tiempo_rest = max(0, tiempo_total - tiempo_pasado)
-    st.info(f"⏳ Tiempo global restante: {tiempo_rest} s")
+# Tiempo global
+if inicio:
+    tiempo_pasado = int(time.time() - inicio)
+    tiempo_rest = max(0, 60 * len(questions) - tiempo_pasado)
 else:
-    st.info("⏳ Esperando que el organizador inicie la carrera...")
+    tiempo_rest = None
 
-# Mostrar pregunta y manejar respuestas
-if nombre and nombre.strip():
-    jugador = st.session_state.jugadores.get(nombre.strip())
-    if not jugador:
-        st.warning("Registro pendiente; recarga la página si no aparece.")
+if player:
+    # --------------------------
+    # Si ya terminó
+    # --------------------------
+    if player.get("fin"):
+        st.success("Has terminado la carrera. ¡Buen trabajo!")
+
+        if player.get("tiempo"):
+            st.info(f"Tiempo total: {format_seconds_to_mmss(player['tiempo'])}")
+
+        # No mostrar tiempo global (opción A)
     else:
-        if inicio_global and tiempo_rest > 0 and not jugador.get("fin", False):
-            idx = jugador.get("preg", 0) % len(questions)
-            qdata = questions[idx]
-            st.subheader(f"Pregunta #{idx+1}")
-            st.write(qdata["q"])
-            opciones = qdata["options"]
-            key_radio = f"radio_{nombre.strip()}_{idx}"
-            seleccion = st.radio("Selecciona una opción:", opciones, key=key_radio)
-            submit_key = f"submit_{nombre.strip()}_{idx}"
-            if st.button("Enviar respuesta", key=submit_key):
-                correcto = seleccion == qdata["correct"]
-                entry = {
-                    "timestamp": int(time.time()),
-                    "jugador": nombre.strip(),
-                    "pregunta_idx": idx,
-                    "selected": seleccion,
-                    "correct": correcto
-                }
-                append_answer(entry)
-                if correcto:
-                    st.success("✅ Correcto (+10 pts)")
-                    jugador["points"] = jugador.get("points", 0) + POINTS_PER_CORRECT
-                    jugador["aciertos"] = jugador.get("aciertos", 0) + 1
-                else:
-                    st.error("❌ Incorrecto")
-                jugador["preg"] = jugador.get("preg", 0) + 1
-                # revisar meta
-                if jugador.get("points", 0) >= POINTS_TO_FINISH:
-                    jugador["fin"] = True
-                    jugador["tiempo"] = int(time.time() - inicio_global)
-                    st.balloons()
-                    st.success("🏁 ¡Llegaste a la meta!")
-                # persistir jugador
-                fs_p = ensure_state_keys(load_state())
-                fs_p.setdefault("players_info", {})
-                fs_p["players_info"][nombre.strip()] = jugador
-                if nombre.strip() not in fs_p.get("jugadores", []):
-                    fs_p.setdefault("jugadores", []).append(nombre.strip())
-                save_state(fs_p)
+        # ------------------------------------
+        # Carrera aún no iniciada
+        # ------------------------------------
+        if not inicio:
+            st.info("⏳ Esperando al organizador...")
         else:
-            if not inicio_global:
-                st.info("La carrera no ha iniciado. Espera al organizador.")
-            elif jugador.get("fin", False):
-                st.success("Has terminado la carrera. ¡Buen trabajo!")
-                if jugador.get("tiempo") is not None:
-                    st.info(f"Tiempo total: {format_seconds_to_mmss(jugador.get('tiempo'))}")
-            else:
-                st.warning("Tiempo global finalizado o no disponible.")
+            st.info(f"⏳ Tiempo global restante: {tiempo_rest}s")
 
-# Nota: Top3 y progreso global están disponibles en el panel admin (cuando lo muestras).
-st.caption("El panel administrador está oculto por defecto. Marca 'Mostrar panel administrador' en la barra lateral para acceder a los controles y auditoría (requiere login admin).")
+            # ======================================
+            # Mostrar pregunta o pantalla de siguiente
+            # ======================================
+            preg_idx = player["preg"]
+
+            # TERMINA SI YA RESPONDIÓ LAS 8
+            if preg_idx >= 8:
+                player["fin"] = True
+                player["tiempo"] = int(time.time() - inicio)
+                fs["players_info"][nombre.strip()] = player
+                save_state(fs)
+                st.experimental_rerun()
+
+            # Si el jugador acaba de responder y está esperando "Continuar"
+            last_t = st.session_state.last_answer_time.get(nombre, None)
+            if last_t and time.time() - last_t < AUTO_CONTINUE_TIME:
+                # Mostrar pantalla intermedia
+                siguiente = preg_idx + 1
+                if st.button(f"Continuar → Pregunta {siguiente}"):
+                    st.session_state.last_answer_time[nombre] = None
+                    st.experimental_rerun()
+
+                # Si pasan 20s, avanzar solo
+                if time.time() - last_t >= AUTO_CONTINUE_TIME:
+                    st.session_state.last_answer_time[nombre] = None
+                    st.experimental_rerun()
+
+                # Mostrar barra de progreso SOLO de este jugador
+                progreso = player["points"] / 80
+                barra_carretera_html(progreso)
+
+                st.stop()
+
+            # =====================
+            # Mostrar pregunta
+            # =====================
+            q = questions[preg_idx]
+            st.subheader(f"Pregunta #{preg_idx+1}")
+            st.write(q["q"])
+
+            sel = st.radio("Selecciona una opción:", q["options"], key=f"opt_{preg_idx}")
+
+            if st.button("Enviar respuesta", key=f"send_{preg_idx}"):
+                correcto = (sel == q["correct"])
+
+                append_answer({
+                    "timestamp": int(time.time()),
+                    "jugador": nombre,
+                    "pregunta_idx": preg_idx,
+                    "selected": sel,
+                    "correct": correcto
+                })
+
+                if correcto:
+                    st.success("¡Correcto! +10 pts")
+                    player["points"] += 10
+                    player["aciertos"] += 1
+                else:
+                    st.error("Incorrecto")
+
+                player["preg"] += 1
+
+                fs["players_info"][nombre] = player
+                save_state(fs)
+
+                st.session_state.last_answer_time[nombre] = time.time()
+                st.experimental_rerun()
+
+            # ---------------------------
+            # Mostrar barra SOLO del jugador
+            # ---------------------------
+            progreso = player["points"] / 80   # 8 preguntas → 80 pts máx
+            barra_carretera_html(progreso)
+
+# Mensaje final
+st.caption("El panel administrador está oculto. Actívelo desde la barra lateral para administrar la carrera.")
