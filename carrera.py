@@ -1,10 +1,11 @@
-# carrera.py — Versión actualizada final
+# carrera.py — Versión final con auto-refresh y barra acumulativa
 import streamlit as st
 import time
 import pandas as pd
 import os
 import json
 from datetime import timedelta
+from streamlit_autorefresh import st_autorefresh
 
 # ---------------------------
 # Archivos persistentes
@@ -141,6 +142,10 @@ if "last_feedback_time" not in st.session_state:
     st.session_state.last_feedback_time = 0
 if "last_feedback_msg" not in st.session_state:
     st.session_state.last_feedback_msg = ""
+if "current_question" not in st.session_state:
+    st.session_state.current_question = 0
+if "selection" not in st.session_state:
+    st.session_state.selection = None
 
 # ---------------------------
 # Funciones de jugador
@@ -169,6 +174,8 @@ def reset_all():
     st.session_state.jugadores = {}
     st.session_state.answers = []
     st.session_state.show_next = False
+    st.session_state.current_question = 0
+    st.session_state.selection = None
 
 # ---------------------------
 # Barra 🛸🌕
@@ -191,8 +198,8 @@ def barra_progreso(player_points):
 # ---------------------------
 st.set_page_config(page_title="Formulario de Inteligencia Artificial y Sistemas Cibernéticos", layout="wide")
 
-# Auto-refresh
-st.experimental_rerun_interval = 0.5  # 0.5 s
+# Auto-refresh cada 0.5s
+st_autorefresh(interval=500, key="auto_refresh")
 
 # ---------- Admin ----------
 if "admin_authenticated" not in st.session_state:
@@ -242,10 +249,10 @@ else:
             save_state(fs)
             st.sidebar.success("Carrera iniciada")
 
-    # Reset
-    if st.sidebar.button("🧹 Limpiar TODOS los registros"):
+    # Reset / eliminar registros
+    if st.sidebar.button("🧹 Eliminar registro"):
         reset_all()
-        st.sidebar.success("Registros limpiados")
+        st.sidebar.success("Registros eliminados")
 
     # Auditoría
     st.sidebar.markdown("### 🗂 Auditoría (respuestas)")
@@ -287,15 +294,10 @@ if nombre and nombre.strip():
     tiempo_rest = max(0, tiempo_total - tiempo_pasado)
 
     if inicio_global and not jugador.get("fin", False):
-        idx = jugador.get("preg",0)
+        idx = st.session_state.current_question
         qdata = questions[idx]
 
         # Mostrar pregunta solo si show_next es True
-        if "current_question" not in st.session_state:
-            st.session_state.current_question = idx
-            st.session_state.selection = None
-            st.session_state.show_next = True
-
         if st.session_state.show_next:
             st.subheader(f"Pregunta #{idx+1}")
             st.write(qdata["q"])
@@ -355,5 +357,5 @@ if nombre and nombre.strip():
     else:
         st.info("⏳ Esperando que el organizador inicie la carrera...")
 
-st.caption("Nota: El panel administrador requiere iniciar sesión con usuario 'Grupo5' y contraseña '2025'.")
+st.caption("Nota: El panel administrador requiere iniciar sesión ")
 st.caption("Desarrollado por Kendall Quirós Hernández en el 2025")
