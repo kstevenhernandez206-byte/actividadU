@@ -1,7 +1,6 @@
-# carrera.py — Versión gamer elegante con nave sci-fi moderna y música espacial
+# carrera.py — Versión gamer galáctica completa con nave sci-fi y fondo espacial
+# Incluye: fondo galáctico, estrellas animadas, nave sci-fi, barra gamer, música espacial
 # Requisitos: pip install streamlit streamlit-autorefresh pandas requests
-# Coloca ambient.mp3 en la misma carpeta si deseas usar un archivo local.
-# Música pública por defecto: https://cdn.pixabay.com/audio/2022/11/11/audio_2db585d7ad.mp3
 
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
@@ -19,11 +18,12 @@ BASE_DIR = os.path.dirname(__file__)
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 ANSWERS_FILE = os.path.join(BASE_DIR, "answers.json")
 MUSIC_FILE = os.path.join(BASE_DIR, "ambient.mp3")  # si existe, lo usará
-# Música pública espacial (pixabay, free)
+
+# Música pública espacial (pixabay)
 DEFAULT_MUSIC_URL = "https://cdn.pixabay.com/audio/2022/11/11/audio_2db585d7ad.mp3"
 MUSIC_URL = os.environ.get("MUSIC_URL", DEFAULT_MUSIC_URL)
 
-# Nave (sci-fi moderna) - PNG público
+# Nave espacial moderna sci-fi
 SPACESHIP_URL = "https://pngimg.com/uploads/spaceship/spaceship_PNG52.png"
 
 # ---------- I/O helpers ----------
@@ -54,7 +54,7 @@ def append_answer(entry):
     answers.append(entry)
     save_answers(answers)
 
-# ---------- Preguntas (8 ejemplo) ----------
+# ---------- Preguntas ----------
 questions = [
     {"q":"¿Qué define Russell y Norvig (2021) como propósito central de la inteligencia artificial?",
      "options":["Construir agentes capaces de actuar racionalmente","Generar entretenimiento digital","Sustituir totalmente al ser humano","Crear máquinas que imiten emociones humanas"],
@@ -115,55 +115,57 @@ def remote_resource_ok(url, timeout=2):
 SPACESHIP_OK = remote_resource_ok(SPACESHIP_URL)
 MUSIC_OK = remote_resource_ok(MUSIC_URL)
 
-# ---------- CSS / Estilo gamer con fondo galáctico ----------
+# ---------- CSS GALÁCTICO ----------
 st.markdown(
     """
     <style>
+
+    /* Fondo galáctico 2025 compatible */
+    .bg-stars {
+        position: fixed;
+        inset: 0;
+        z-index: -5;
+        background: black;
+        background-image:
+            radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.18), transparent),
+            radial-gradient(1.5px 1.5px at 70% 10%, rgba(255,255,255,0.15), transparent),
+            radial-gradient(1px 1px at 80% 80%, rgba(255,255,255,0.13), transparent),
+            radial-gradient(1.2px 1.2px at 40% 70%, rgba(255,255,255,0.15), transparent),
+            radial-gradient(1px 1px at 60% 45%, rgba(255,255,255,0.12), transparent),
+            radial-gradient(circle at bottom, #0c0f1d 0%, #000000 60%);
+        animation: starFloat 12s ease-in-out infinite alternate;
+    }
+
+    @keyframes starFloat {
+        0%   { transform: translateY(0px) scale(1);   opacity: .95; }
+        50%  { transform: translateY(-18px) scale(1.015); opacity: 1; }
+        100% { transform: translateY(0px) scale(1);   opacity: .95; }
+    }
+
     :root{
       --accent1: #00d0ff;
       --accent2: #9b7bff;
       --accent3: #6df0d6;
     }
-    html, body, #root, .main {
-      background: radial-gradient(ellipse at bottom, rgba(15,18,30,0.6) 0%, rgba(0,0,0,1) 70%), black;
-      color: #e6eef8;
-      min-height:100vh;
-    }
-    .star-field {
-      position:fixed;
-      inset:0;
-      z-index:0;
-      background:
-        radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,0.06), transparent),
-        radial-gradient(1px 1px at 70% 10%, rgba(255,255,255,0.04), transparent),
-        radial-gradient(1px 1px at 80% 80%, rgba(255,255,255,0.03), transparent),
-        radial-gradient(1px 1px at 40% 70%, rgba(255,255,255,0.05), transparent),
-        radial-gradient(1px 1px at 60% 45%, rgba(255,255,255,0.025), transparent);
-      animation: twinkle 6s linear infinite;
-      pointer-events:none;
-      opacity:0.9;
-      mix-blend-mode: screen;
-    }
-    @keyframes twinkle {
-      0% { transform: translateY(0px) scale(1); opacity:0.9}
-      50% { transform: translateY(-6px) scale(1.02); opacity:1}
-      100% { transform: translateY(0px) scale(1); opacity:0.9}
-    }
+
     .player-wrapper { max-width:900px; margin:28px auto 120px auto; position:relative; z-index:5; }
+
     .question-card {
-      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-      border: 1px solid rgba(109,240,214,0.06);
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(109,240,214,0.08);
       padding:18px;
       border-radius:14px;
-      box-shadow: 0 12px 30px rgba(16,16,30,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
-      backdrop-filter: blur(4px);
+      box-shadow: 0 12px 30px rgba(16,16,30,0.6);
+      backdrop-filter: blur(5px);
       margin-bottom:12px;
     }
-    .question-title { font-size:20px; font-weight:600; color:var(--accent2); margin-bottom:8px; }
+
+    .question-title { font-size:21px; font-weight:600; color:var(--accent2); margin-bottom:6px; }
     .question-text { font-size:15px; color:#dbeeff; margin-bottom:12px; }
+
     .btn-small {
-      background: linear-gradient(90deg, rgba(0,208,255,0.12), rgba(155,123,255,0.08));
-      border: 1px solid rgba(109,240,214,0.12);
+      background: linear-gradient(90deg, rgba(0,208,255,0.18), rgba(155,123,255,0.15));
+      border: 1px solid rgba(109,240,214,0.16);
       color: #e9fbff;
       padding:8px 14px;
       border-radius:10px;
@@ -172,8 +174,17 @@ st.markdown(
       transition: box-shadow .18s ease, transform .08s ease;
       box-shadow: 0 6px 20px rgba(11,14,22,0.55);
     }
-    .btn-small:hover { box-shadow: 0 10px 30px rgba(109,240,214,0.14); transform: translateY(-2px); }
-    .stTextInput>div>div>input { border-radius:10px; padding:10px 12px; background: rgba(255,255,255,0.02); color: #eaf8ff; border: 1px solid rgba(255,255,255,0.03); }
+    .btn-small:hover { box-shadow: 0 10px 30px rgba(109,240,214,0.25); transform: translateY(-2px); }
+
+    .stTextInput>div>div>input {
+        border-radius:10px;
+        padding:10px 12px;
+        background: rgba(255,255,255,0.04);
+        color: #eaf8ff;
+        border: 1px solid rgba(255,255,255,0.07);
+    }
+
+    /* Barra de progreso */
     #bottom-car-bar {
       position: fixed;
       left: 0;
@@ -184,59 +195,12 @@ st.markdown(
       justify-content:center;
       pointer-events:none;
     }
-    .bottom-inner {
-      width: calc(90% - 20px);
-      max-width: 980px;
-      background: linear-gradient(180deg, rgba(12,14,22,0.92), rgba(8,10,14,0.88));
-      padding: 8px 12px;
-      border-radius: 14px;
-      box-shadow: 0 12px 34px rgba(0,0,0,0.6);
-      pointer-events:auto;
-      border: 1px solid rgba(109,240,214,0.06);
-    }
-    .car-track {
-      height: 40px;
-      background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
-      border-radius:20px;
-      padding:4px;
-      position:relative;
-      overflow:hidden;
-      border: 1px solid rgba(109,240,214,0.04);
-    }
-    .car-fill {
-      height: 32px;
-      background: linear-gradient(90deg, rgba(0,208,255,0.14), rgba(155,123,255,0.12));
-      border-radius: 16px;
-      transition: width 0.6s cubic-bezier(.2,.9,.2,1);
-      box-shadow: 0 6px 24px rgba(109,240,214,0.06), inset 0 -2px 8px rgba(0,0,0,0.35);
-      filter: drop-shadow(0 8px 14px rgba(63,81,181,0.06));
-    }
-    .car-icon {
-      position:absolute;
-      top:4px;
-      width:34px;
-      height:34px;
-      transition:left 0.6s cubic-bezier(.2,.9,.2,1);
-      transform: translateX(-50%);
-      display:flex; align-items:center; justify-content:center;
-      filter: drop-shadow(0 6px 18px rgba(0,0,0,0.6));
-    }
-    .car-flag {
-      position:absolute;
-      right:12px;
-      top:8px;
-      font-size:18px;
-      color:var(--accent1);
-      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
-    }
-    .small-note { font-size:12px; color:#bcd8ff; margin-top:8px; }
-    @media (max-width:760px){
-      .player-wrapper { margin:18px 12px 120px 12px; }
-      .car-icon { width:28px; height:28px; top:6px; }
-      .car-fill { height:28px; }
-    }
+
     </style>
-    <div class="star-field"></div>
+
+    <!-- Capa del fondo galáctico -->
+    <div class="bg-stars"></div>
+
     """,
     unsafe_allow_html=True
 )
@@ -320,31 +284,15 @@ if show_admin:
         if cols[1].button("🧹 Limpiar TODO"):
             reset_all()
             st.sidebar.success("Sistema reiniciado")
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### Auditoría (compacta)")
-        answers = load_answers()
-        if answers:
-            df_a = pd.DataFrame(answers)
-            if "timestamp" in df_a.columns:
-                df_a["hora"] = pd.to_datetime(df_a["timestamp"], unit="s").dt.strftime("%Y-%m-%d %H:%M:%S")
-            sel = st.sidebar.selectbox("Filtrar por jugador", ["(Todos)"] + sorted(list({a.get("jugador","") for a in answers if a.get("jugador","")})))
-            if sel != "(Todos)":
-                df_a = df_a[df_a["jugador"] == sel]
-            cols_a = [c for c in ["hora","jugador","pregunta_idx","selected","correct"] if c in df_a.columns]
-            if cols_a:
-                st.sidebar.dataframe(df_a[cols_a].sort_values(by="hora", ascending=False).reset_index(drop=True), height=200)
-        else:
-            st.sidebar.info("Sin registros de auditoría")
 
 # ---------- MAIN (jugador) ----------
 st.markdown("<div class='player-wrapper'>", unsafe_allow_html=True)
-st.markdown("<div style='display:flex;align-items:center;justify-content:space-between;margin-bottom:8px'>", unsafe_allow_html=True)
-st.markdown("<h2 style='margin:0;color:#dceeff'>Carrera - Modo Gamer Galáctico</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='color:#dceeff;margin-bottom:10px'>🚀 Carrera - Modo Gamer Galáctico</h2>", unsafe_allow_html=True)
 
 # Music controls
 music_col1, music_col2 = st.columns([4,1])
 with music_col1:
-    st.markdown("<div style='font-size:12px;color:#9fbff7'>Fondo: Galaxia suave · Música ambiental espacial (pulsa ▶️)</div>", unsafe_allow_html=True)
+    st.markdown("<div style='font-size:12px;color:#9fbff7'>🎧 Música espacial ambiental (pulsa ▶️)</div>", unsafe_allow_html=True)
 with music_col2:
     if os.path.exists(MUSIC_FILE) or MUSIC_OK:
         def toggle_music():
@@ -353,7 +301,7 @@ with music_col2:
         if st.button(label, key="music_toggle"):
             toggle_music()
     else:
-        st.markdown("<div style='font-size:12px;color:#7f9fbf'>No hay música disponible local; usa MUSIC_URL si quieres</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:12px;color:#7f9fbf'>Sin música disponible</div>", unsafe_allow_html=True)
 
 player_name = st.text_input("Ingresa tu nombre:", key="player_name_input")
 if player_name and player_name.strip():
@@ -386,21 +334,12 @@ if player is None:
         st.markdown("</div>", unsafe_allow_html=True)
         st.stop()
 
-# terminado?
 if player.get("fin", False):
     st.success("Has terminado la carrera. ¡Buen trabajo!")
     if player.get("tiempo") is not None:
         st.info(f"Tiempo total: {format_seconds_to_mmss(player.get('tiempo'))}")
     st.markdown("</div>", unsafe_allow_html=True)
 else:
-    if not inicio_global:
-        st.info("La carrera aún no ha iniciado. Espera al organizador.")
-    else:
-        tiempo_total = QUESTION_TIME * TOTAL_QUESTIONS
-        pasado = int(time.time() - inicio_global)
-        tiempo_restante = max(0, tiempo_total - pasado)
-        st.info(f"⏳ Tiempo global restante: {format_seconds_to_mmss(tiempo_restante)}")
-
     preg_idx = player.get("preg", 0)
     if preg_idx >= TOTAL_QUESTIONS:
         player["fin"] = True
@@ -423,7 +362,7 @@ else:
     if in_continue:
         siguiente = preg_idx + 1
         st.markdown("<div class='question-card'>", unsafe_allow_html=True)
-        st.markdown("<div class='question-title'>Resultado registrado ✅</div>", unsafe_allow_html=True)
+        st.markdown("<div class='question-title'>Resultado registrado</div>", unsafe_allow_html=True)
         answers = load_answers()
         last_answers = [a for a in answers if a.get("jugador")==player_name.strip()]
         if last_answers:
@@ -432,8 +371,7 @@ else:
                 st.success("Respuesta correcta. +10 pts")
             else:
                 st.error("Respuesta incorrecta.")
-        st.write("")
-        if st.button(f"Continuar → Pregunta {siguiente}", key=f"cont_{player_name}_{preg_idx}", help="Avanzar de pantalla"):
+        if st.button(f"Continuar → Pregunta {siguiente}"):
             st.session_state.last_answer_time[player_name.strip()] = None
             st.experimental_rerun()
         st.markdown("</div>", unsafe_allow_html=True)
@@ -447,49 +385,35 @@ else:
             selection = st.radio("", qobj["options"], key=radio_key, label_visibility="collapsed")
         except Exception:
             selection = qobj["options"][0]
-        send_key = f"send_{player_name.strip()}_{preg_idx}"
-        send_col1, send_col2 = st.columns([1,1])
-        with send_col1:
-            if st.button("Enviar respuesta", key=send_key):
-                if selection not in qobj["options"]:
-                    st.warning("Selecciona una opción antes de enviar.")
-                else:
-                    correcto = (selection == qobj["correct"])
-                    append_answer({"timestamp":int(time.time()), "jugador":player_name.strip(), "pregunta_idx":preg_idx, "selected":selection, "correct":correcto})
-                    if correcto:
-                        player["points"] = player.get("points",0) + POINTS_PER_CORRECT
-                        player["aciertos"] = player.get("aciertos",0) + 1
-                    player["preg"] = player.get("preg",0) + 1
-                    if player["preg"] >= TOTAL_QUESTIONS:
-                        player["fin"] = True
-                        player["tiempo"] = int(time.time() - inicio_global) if inicio_global else None
-                    fs_save = ensure_state_keys(load_state())
-                    fs_save.setdefault("players_info", {})
-                    fs_save["players_info"][player_name.strip()] = player
-                    if player_name.strip() not in fs_save.get("jugadores", []):
-                        fs_save.setdefault("jugadores", []).append(player_name.strip())
-                    save_state(fs_save)
-                    st.session_state.last_answer_time[player_name.strip()] = time.time()
-                    st.experimental_rerun()
-        with send_col2:
-            st.markdown("<div style='text-align:right'><small style='color:#9fbff7'>Puntos actuales: <strong style='color:#dff6ff'>{}</strong></small></div>".format(player.get("points",0)), unsafe_allow_html=True)
+
+        if st.button("Enviar respuesta"):
+            correcto = (selection == qobj["correct"])
+            append_answer({"timestamp":int(time.time()), "jugador":player_name.strip(), "pregunta_idx":preg_idx, "selected":selection, "correct":correcto})
+            if correcto:
+                player["points"] += POINTS_PER_CORRECT
+                player["aciertos"] += 1
+            player["preg"] += 1
+            if player["preg"] >= TOTAL_QUESTIONS:
+                player["fin"] = True
+                player["tiempo"] = int(time.time() - inicio_global) if inicio_global else None
+            fs_save = ensure_state_keys(load_state())
+            fs_save["players_info"][player_name.strip()] = player
+            save_state(fs_save)
+            st.session_state.last_answer_time[player_name.strip()] = time.time()
+            st.experimental_rerun()
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------
-# Bottom fixed single bar (nave)
+# Bottom fixed bar (nave)
 # ---------------------------
-display_progress = 0.0
-display_label = ""
-if player is not None:
-    display_progress = player.get("points",0) / MAX_POINTS if MAX_POINTS>0 else 0.0
-    display_label = f"{player.get('points',0)} pts — Pregunta {min(player.get('preg',0)+1, TOTAL_QUESTIONS)} / {TOTAL_QUESTIONS}"
-
+display_progress = player.get("points",0) / MAX_POINTS if MAX_POINTS>0 else 0.0
+display_label = f"{player.get('points',0)} pts — Pregunta {min(player.get('preg',0)+1, TOTAL_QUESTIONS)}/{TOTAL_QUESTIONS}"
 display_percent = max(0.0, min(1.0, display_progress)) * 100
 
-# Ajuste de tamaño: nave ocupa el tamaño de .car-icon (34px), usa object-fit
-spaceship_html = f'<img src="{SPACESHIP_URL}" style="width:100%;height:100%;border-radius:6px;object-fit:contain;"/>' if SPACESHIP_OK else '<div style="font-size:20px;">🛸</div>'
+spaceship_html = f'<img src="{SPACESHIP_URL}" style="width:100%;height:100%;object-fit:contain;"/>' if SPACESHIP_OK else '<div style="font-size:20px;">🛸</div>'
 
 bottom_html = f"""
 <div id="bottom-car-bar">
@@ -498,15 +422,12 @@ bottom_html = f"""
       <div style="flex:1; margin-right:12px;">
         <div class="car-track">
           <div class="car-fill" style="width:{display_percent}%;"></div>
-          <div class="car-icon" style="left:calc({display_percent}%); width:34px; height:34px;">
+          <div class="car-icon" style="left:calc({display_percent}%);">
             {spaceship_html}
           </div>
           <div class="car-flag">🏁</div>
         </div>
         <div class="small-note">{display_label}</div>
-      </div>
-      <div style="width:160px; text-align:right;">
-        <div style="font-size:12px;color:#9fbff7">Progreso</div>
       </div>
     </div>
   </div>
@@ -514,35 +435,26 @@ bottom_html = f"""
 """
 st.markdown(bottom_html, unsafe_allow_html=True)
 
-# ---------- Música espacial (controlada por botón; no forzamos autoplay) ----------
-audio_src = ""
-if os.path.exists(MUSIC_FILE):
-    # usar archivo local si existe
-    audio_src = f"file://{os.path.abspath(MUSIC_FILE)}"
+# ---------- Música espacial ----------
+audio_src = MUSIC_URL if MUSIC_OK else DEFAULT_MUSIC_URL
+
+if st.session_state.music_playing:
+    st.components.v1.html(f"""
+        <audio id="bg-audio" src="{audio_src}" autoplay loop>
+        </audio>
+        <script>
+        var a = document.getElementById('bg-audio');
+        a.volume = 0.28;
+        a.play();
+        </script>
+    """, height=0)
 else:
-    # usar MUSIC_URL si está disponible (pixabay por defecto)
-    audio_src = MUSIC_URL if MUSIC_OK else DEFAULT_MUSIC_URL
-
-# Render audio element controlled by session_state
-if audio_src:
-    if st.session_state.music_playing:
-        st.components.v1.html(f"""
-            <audio id="bg-audio" src="{audio_src}" autoplay loop>
-                Your browser does not support the audio element.
-            </audio>
-            <script>
-            try{{ var a = document.getElementById('bg-audio'); a.volume = 0.28; a.play(); }}catch(e){{}}
-            </script>
-        """, height=0)
-    else:
-        # render paused audio element (so user can press ▶️ to toggle)
-        st.components.v1.html(f"""
-            <audio id="bg-audio" src="{audio_src}" loop>
-                Your browser does not support the audio element.
-            </audio>
-            <script>
-            try{{ var a = document.getElementById('bg-audio'); a.volume = 0.28; a.pause(); }}catch(e){{}}
-            </script>
-        """, height=0)
-
-# ---------- FIN ----------
+    st.components.v1.html(f"""
+        <audio id="bg-audio" src="{audio_src}" loop></audio>
+        <script>
+        var a = document.getElementById('bg-audio');
+        a.volume = 0.28;
+        a.pause();
+        </script>
+    """, height=0)
+# ---------------------------
