@@ -1,4 +1,4 @@
-# carrera.py — Versión optimizada con heartbeat y detección de jugadores activos
+# carrera.py — Versión optimizada con heartbeat, barra siempre visible y feedback extendido
 import streamlit as st
 import time
 import pandas as pd
@@ -14,11 +14,12 @@ BASE_DIR = os.path.dirname(__file__)
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 ANSWERS_FILE = os.path.join(BASE_DIR, "answers.json")
 
-QUESTION_TIME = 50  # segundos por pregunta (no usado como timer visible, es referencia)
-CONTINUE_DELAY = 1   # segundos (no obstructivo, solo para lógica si se necesita)
+QUESTION_TIME = 50  # segundos por pregunta (referencia)
+CONTINUE_DELAY = 1   # segundos (no obstructivo)
 POINTS_PER_CORRECT = 10
 ACTIVE_THRESHOLD = 6  # segundos para considerar "activo" en admin
 AUTOREFRESH_MS = 500  # intervalo de auto-refresh (ms)
+FEEDBACK_SECONDS = 3  # segundos que se muestra el feedback antes de permitir continuar
 
 # ---------------------------
 # Preguntas (puedes externalizar después)
@@ -173,11 +174,14 @@ if "selection" not in st.session_state:
     st.session_state.selection = None
 if "answers" not in st.session_state:
     st.session_state.answers = load_answers()
+if "last_feedback_time" not in st.session_state:
+    st.session_state.last_feedback_time = 0
+if "last_feedback" not in st.session_state:
+    st.session_state.last_feedback = ""
 
 # ---------------------------
 # Sidebar: Admin
 # ---------------------------
-fs = ensure_state_keys = None  # placeholder to avoid linter warnings
 fs = load_state()
 st.sidebar.header("Administrador")
 
@@ -230,7 +234,7 @@ else:
             fs_local["organizer"] = organizer
             save_state(fs_local)
 
-            # Establecer valores en la sesión del admin (no necesario para jugadores, ellos detectarán inicio por estado)
+            # Establecer valores en la sesión del admin
             st.session_state.show_next = True
             st.session_state.current_question = 0
             st.session_state.selection = None
@@ -245,6 +249,8 @@ else:
         st.session_state.current_question = 0
         st.session_state.show_next = False
         st.session_state.selection = None
+        st.session_state.last_feedback_time = 0
+        st.session_state.last_feedback = ""
         st.sidebar.success("Registros eliminados")
 
     # Auditoría (respuestas)
@@ -271,11 +277,9 @@ nombre = st.text_input("Ingresa tu nombre para unirte:", key="player_name_input"
 # actualizar heartbeat si hay nombre
 if nombre and nombre.strip():
     nombre = nombre.strip()
-    # cargar estado y asegurar estructura
     fs = load_state()
     if nombre not in fs.get("jugadores", []):
         fs.setdefault("jugadores", []).append(nombre)
-    # asegurar estructura del jugador
     pinfo = ensure_player_structure(fs, nombre)
 
     # actualizar last_seen (heartbeat)
@@ -284,20 +288,16 @@ if nombre and nombre.strip():
     save_state(fs)
 
     # sincronizar sesión del jugador con su progreso guardado
-    # si la carrera ya inició y el jugador no ha terminado, mostrar la pregunta automáticamente
     inicio_global = fs.get("inicio", None)
     jugador = fs["players_info"][nombre]
 
     # asegurar valores en st.session_state relativos al jugador
-    # mantendremos current_question ligado al progreso del jugador (preg)
     if "player_name" not in st.session_state:
         st.session_state.player_name = nombre
 
     # mostrar la pregunta si la carrera inició y el jugador no terminó
     if inicio_global and not jugador.get("fin", False):
-        # si la sesión del jugador no está mostrando la pregunta, activarla
         if not st.session_state.show_next:
-            # si el jugador no ha respondido ninguna pregunta aún, iniciar en la pregunta 0
             st.session_state.current_question = jugador.get("preg", 0)
             st.session_state.show_next = True
             st.session_state.selection = None
@@ -308,6 +308,11 @@ if nombre and nombre.strip():
     tiempo_total = TOTAL_QUESTIONS * QUESTION_TIME
     tiempo_pasado = int(time.time() - inicio_global) if inicio_global else 0
     tiempo_rest = max(0, tiempo_total - tiempo_pasado)
+
+    # -------------------------
+    # Mostrar barra siempre
+    # -------------------------
+    barra_progreso(jugador.get("points", 0))
 
     if inicio_global and not jugador.get("fin", False):
         idx = st.session_state.current_question
@@ -321,12 +326,12 @@ if nombre and nombre.strip():
         if st.session_state.show_next:
             st.subheader(f"Pregunta #{idx+1} / {TOTAL_QUESTIONS}")
             st.write(qdata["q"])
-            # radio key must be unique per player and per question
             radio_key = f"radio_{nombre}_{idx}"
             st.session_state.selection = st.radio("Selecciona una opción:", qdata["options"], key=radio_key)
 
             submit_key = f"submit_{nombre}_{idx}"
             if st.button("Enviar respuesta", key=submit_key):
+                # procesar respuesta
                 correcto = (st.session_state.selection == qdata["correct"])
                 entry = {
                     "timestamp": int(time.time()),
@@ -343,45 +348,64 @@ if nombre and nombre.strip():
                 if correcto:
                     p["points"] = p.get("points", 0) + POINTS_PER_CORRECT
                     p["aciertos"] = p.get("aciertos", 0) + 1
-                    st.success("✅ Correcto (+10 pts)")
+                    # almacenamos feedback
+                    st.session_state.last_feedback = "Correcto"
                 else:
-                    st.error("❌ Incorrecto")
+                    st.session_state.last_feedback = "Incorrecto"
+                # incrementar pregunta contestada
                 p["preg"] = p.get("preg", 0) + 1
                 # si terminó
                 if p["preg"] >= TOTAL_QUESTIONS:
                     p["fin"] = True
                     p["tiempo"] = int(time.time() - fs_upd.get("inicio", time.time()))
-                    st.balloons()
-                    st.success("🏁 ¡Has completado las 8 preguntas!")
+                    # dejar feedback de final también
                 # guardar cambios
                 fs_upd["players_info"][nombre] = p
                 save_state(fs_upd)
 
-                # ocultar pregunta y mostrar botón continuar (por sesión)
+                # gestionar feedback por tiempo (no bloquear la app)
                 st.session_state.show_next = False
                 st.session_state.last_feedback_time = time.time()
-                st.session_state.last_feedback = "Correcto" if correcto else "Incorrecto"
+                # actualizar jugador en variable local 'jugador' para mostrar barra correcta
+                jugador = fs_upd["players_info"][nombre]
 
         else:
-            # mostrar feedback y botón continuar
+            # mostrar feedback y controlar el tiempo antes de permitir continuar
             last = st.session_state.get("last_feedback", "")
+            last_time = st.session_state.get("last_feedback_time", 0)
+            elapsed = time.time() - last_time if last_time else None
+            remaining = None
+            if elapsed is not None:
+                remaining = max(0, int(FEEDBACK_SECONDS - elapsed))
+
+            # Mostrar feedback visual
             if last:
                 if last == "Correcto":
-                    st.success("✅ Correcto")
+                    st.success("✅ Correcto (+10 pts)")
                 else:
-                    st.info("❌ Incorrecto")
-            if st.button("Continuar a la siguiente pregunta"):
-                # cargar jugador y avanzar
-                fs_adv = load_state()
-                p = fs_adv["players_info"].get(nombre, {})
-                # asegurar increment (ya hecho al enviar) — pero por seguridad:
-                st.session_state.current_question = p.get("preg", st.session_state.current_question)
-                # volver a mostrar la pregunta si no finalizó
-                if not p.get("fin", False):
-                    st.session_state.show_next = True
-                    st.session_state.selection = None
-                else:
-                    st.success("Has terminado la carrera. ¡Buen trabajo!")
+                    st.error("❌ Incorrecto")
+
+            # Mostrar contador hasta que se pueda continuar
+            if remaining is not None and remaining > 0:
+                st.info(f"Continuando en {remaining} s... (espera para ver el resultado)")
+            else:
+                # Botón continuar habilitado después del tiempo
+                if st.button("Continuar a la siguiente pregunta"):
+                    # recargar estado y avanzar según progreso guardado
+                    fs_adv = load_state()
+                    p = fs_adv["players_info"].get(nombre, {})
+                    # sincronizar current_question con lo guardado
+                    st.session_state.current_question = p.get("preg", st.session_state.current_question)
+                    # si no finalizó, mostrar siguiente
+                    if not p.get("fin", False):
+                        st.session_state.show_next = True
+                        st.session_state.selection = None
+                        # limpiar feedback viejo
+                        st.session_state.last_feedback = ""
+                        st.session_state.last_feedback_time = 0
+                    else:
+                        st.success("Has terminado la carrera. ¡Buen trabajo!")
+
     elif nombre and jugador.get("fin", False):
         st.success("Has terminado la carrera. ¡Buen trabajo!")
         if jugador.get("tiempo") is not None:
@@ -390,7 +414,7 @@ if nombre and nombre.strip():
     else:
         # si aún no inició la carrera
         st.info("⏳ Esperando que el organizador inicie la carrera...")
-        # listar progreso parcial si lo deseas
+        # mostrar barra si ya hay progreso parcial
         if nombre:
             barra_progreso(jugador.get("points", 0))
 
