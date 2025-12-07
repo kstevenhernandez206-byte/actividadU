@@ -1,4 +1,5 @@
-# carrera.py — Integrado: feedback 3s + respuesta correcta + animación continuar + bloqueo multi-tab
+# carrera.py — Versión final corregida:
+# feedback 3s + muestra respuesta correcta + animación continuar + bloqueo multi-tab
 import streamlit as st
 import time
 import pandas as pd
@@ -213,9 +214,15 @@ if "selection" not in st.session_state:
     st.session_state.selection = None
 if "answers" not in st.session_state:
     st.session_state.answers = load_answers()
-# feedbacks por jugador: dict {player_name: {"last": "Correcto"/"Incorrecto", "time": ts, "correct_answer": ...}}
-if "feedbacks" not in st.session_state:
-    st.session_state.feedbacks = {}
+# Estado local por jugador en la sesión (asegura que la notificación siempre se muestre)
+if "mode" not in st.session_state:
+    st.session_state.mode = None  # "question" o "feedback"
+if "feedback_type" not in st.session_state:
+    st.session_state.feedback_type = None
+if "feedback_start" not in st.session_state:
+    st.session_state.feedback_start = 0
+if "feedback_correct_answer" not in st.session_state:
+    st.session_state.feedback_correct_answer = None
 if "my_token" not in st.session_state:
     st.session_state.my_token = None
 
@@ -281,7 +288,9 @@ else:
         st.session_state.current_question = 0
         st.session_state.show_next = False
         st.session_state.selection = None
-        st.session_state.feedbacks = {}
+        st.session_state.feedback_type = None
+        st.session_state.feedback_start = 0
+        st.session_state.feedback_correct_answer = None
         st.session_state.my_token = None
         st.sidebar.success("Registros eliminados")
 
@@ -322,7 +331,7 @@ if nombre and nombre.strip():
         if existing_token and (now_ts - existing_last) < ACTIVE_THRESHOLD and st.session_state.get("my_token") != existing_token:
             st.warning("⚠️ Ya hay otra sesión activa con ese nombre. Espere a que termine o use otro nombre.")
             st.stop()  # detenemos para que no se muestre la UI del jugador
-    # Si llegamos aquí, podemos registrar/actualizar la sesión del jugador
+
     # asignar token si no existe en session_state (esto distingue pestañas)
     if not st.session_state.get("my_token"):
         st.session_state.my_token = secrets.token_hex(16)  # token de sesión local
@@ -348,10 +357,12 @@ if nombre and nombre.strip():
 
     # preparar show_next según progreso guardado
     if inicio_global and not jugador.get("fin", False):
-        if not st.session_state.show_next:
+        # Si la sesión es nueva, inicializar modo/question y current_question desde progreso guardado
+        if st.session_state.mode is None:
             st.session_state.current_question = jugador.get("preg", 0)
             st.session_state.show_next = True
             st.session_state.selection = None
+            st.session_state.mode = "question"
 
     # recalcular estado por seguridad
     fs_main = load_state()
@@ -373,10 +384,11 @@ if nombre and nombre.strip():
         qdata = questions[idx]
 
         # MODO: mostrar pregunta activa
-        if st.session_state.show_next:
+        if st.session_state.mode == "question":
             st.subheader(f"Pregunta #{idx+1} / {TOTAL_QUESTIONS}")
             st.write(qdata["q"])
             radio_key = f"radio_{nombre}_{idx}"
+            # mantener selección previa si la hay
             st.session_state.selection = st.radio("Selecciona una opción:", qdata["options"], key=radio_key)
 
             submit_key = f"submit_{nombre}_{idx}"
@@ -395,76 +407,68 @@ if nombre and nombre.strip():
                     }
                     append_answer(entry)
 
-                    # actualizar jugador local y persistir
+                    # actualizar jugador local y persistir inmediatamente (incremento de preg aquí)
                     fs_upd = load_state()
                     p = fs_upd["players_info"].get(nombre, {})
                     if correcto:
                         p["points"] = p.get("points", 0) + POINTS_PER_CORRECT
                         p["aciertos"] = p.get("aciertos", 0) + 1
-                    # incrementar pregunta contestada
+                    # incrementar pregunta contestada (guardamos el progreso)
                     p["preg"] = p.get("preg", 0) + 1
                     # si terminó
                     if p["preg"] >= TOTAL_QUESTIONS:
                         p["fin"] = True
                         p["tiempo"] = int(time.time() - fs_upd.get("inicio", time.time()))
-                    # guardar cambios
                     fs_upd["players_info"][nombre] = p
                     save_state(fs_upd)
 
-                    # Guardar feedback por jugador en session_state (incluye respuesta correcta para mostrar si falla)
-                    st.session_state.feedbacks[nombre] = {
-                        "last": "Correcto" if correcto else "Incorrecto",
-                        "time": time.time(),
-                        "correct_answer": qdata["correct"]
-                    }
+                    # Guardar feedback en sesión local (asegura que se muestre)
+                    st.session_state.feedback_type = "correct" if correcto else "incorrect"
+                    st.session_state.feedback_start = time.time()
+                    st.session_state.feedback_correct_answer = qdata["correct"]
 
-                    # Ocultar pregunta y entrar en modo feedback con temporizador
-                    st.session_state.show_next = False
+                    # cambiar modo a feedback (ocultar pregunta)
+                    st.session_state.mode = "feedback"
+                    # fuerza re-ejecución para que la UI muestre feedback ya
+                    st.experimental_rerun()
 
-        else:
-            # Modo feedback: obtener feedback y calcular tiempo restante
-            fb = st.session_state.feedbacks.get(nombre, None)
-            if fb:
-                elapsed = time.time() - fb.get("time", 0)
-                remaining = max(0, FEEDBACK_SECONDS - int(elapsed))
+        elif st.session_state.mode == "feedback":
+            # Mostrar feedback y temporizador
+            elapsed = time.time() - st.session_state.feedback_start
+            remaining = max(0, FEEDBACK_SECONDS - int(elapsed))
 
-                # Mostrar feedback principal
-                if fb.get("last") == "Correcto":
-                    st.success("✅ Correcto (+10 pts)")
-                else:
-                    st.error("❌ Incorrecto")
-                    # Mostrar cuál era la respuesta correcta
-                    st.info(f"Respuesta correcta: **{fb.get('correct_answer','—')}**")
-
-                # Mostrar contador de espera (si elegiste 2/3 segundos)
-                if remaining > 0:
-                    st.info(f"Continuando en {remaining} s...")  # mensaje visible durante la espera
-                else:
-                    # Mostrar botón CONTINUAR (con efecto visual por CSS)
-                    # lo ponemos dentro de un contenedor con clase 'continue-area' para aplicar pulso glow
-                    container = st.container()
-                    container.markdown('<div class="continue-area"></div>', unsafe_allow_html=True)
-                    if container.button("Continuar a la siguiente pregunta"):
-                        # Avanzar a la pregunta guardada
-                        fs_adv = load_state()
-                        p = fs_adv["players_info"].get(nombre, {})
-                        st.session_state.current_question = p.get("preg", st.session_state.current_question)
-                        if not p.get("fin", False):
-                            st.session_state.show_next = True
-                            st.session_state.selection = None
-                        # limpiar feedback guardado
-                        if nombre in st.session_state.feedbacks:
-                            del st.session_state.feedbacks[nombre]
-
+            if st.session_state.feedback_type == "correct":
+                st.success("✅ Correcto (+10 pts)")
             else:
-                # No hay feedback (caso raro), mostrar continuar de todos modos
-                if st.button("Continuar a la siguiente pregunta"):
+                st.error("❌ Incorrecto")
+                st.info(f"Respuesta correcta: **{st.session_state.feedback_correct_answer}**")
+
+            if remaining > 0:
+                st.info(f"Continuando en {remaining} s...")
+                # no mostrar botón aún
+            else:
+                # mostrar botón continuar con animación
+                cont_col = st.container()
+                cont_col.markdown('<div class="continue-area"></div>', unsafe_allow_html=True)
+                if cont_col.button("Continuar a la siguiente pregunta"):
+                    # sincronizar current_question con progreso guardado (p['preg'] se incrementó al enviar)
                     fs_adv = load_state()
                     p = fs_adv["players_info"].get(nombre, {})
                     st.session_state.current_question = p.get("preg", st.session_state.current_question)
+                    # limpiar feedback y volver a modo pregunta si no finalizó
+                    st.session_state.feedback_type = None
+                    st.session_state.feedback_start = 0
+                    st.session_state.feedback_correct_answer = None
                     if not p.get("fin", False):
-                        st.session_state.show_next = True
+                        st.session_state.mode = "question"
                         st.session_state.selection = None
+                    else:
+                        st.session_state.mode = None
+                        st.success("Has terminado la carrera. ¡Buen trabajo!")
+
+        else:
+            # modo desconocido -> asegurar reinicio a pregunta
+            st.session_state.mode = "question"
 
     elif nombre and jugador.get("fin", False):
         # Mostrar pantalla final (sin duplicar la barra arriba)
@@ -475,4 +479,5 @@ if nombre and nombre.strip():
         st.info("⏳ Esperando que el organizador inicie la carrera...")
 
 st.caption("Nota: El panel administrador requiere iniciar sesión")
-st.caption("Desarrollado por Kendall Quirós Hernández — versión con mejoras (2025)")
+st.caption("Desarrollado por Kendall Quirós Hernández — versión final (2025)")
+st.caption("Fuentes de las preguntas disponibles bajo solicitud.")  
