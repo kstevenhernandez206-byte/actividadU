@@ -1,4 +1,4 @@
-# carrera.py — Versión final con auto-refresh y barra acumulativa
+# carrera.py — Versión optimizada con heartbeat y detección de jugadores activos
 import streamlit as st
 import time
 import pandas as pd
@@ -8,41 +8,20 @@ from datetime import timedelta
 from streamlit_autorefresh import st_autorefresh
 
 # ---------------------------
-# Archivos persistentes
+# Config
 # ---------------------------
 BASE_DIR = os.path.dirname(__file__)
 STATE_FILE = os.path.join(BASE_DIR, "state.json")
 ANSWERS_FILE = os.path.join(BASE_DIR, "answers.json")
 
-def load_state():
-    try:
-        with open(STATE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"inicio": None, "jugadores": [], "players_info": {}, "organizer": None}
-
-def save_state(data):
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def load_answers():
-    try:
-        with open(ANSWERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return []
-
-def save_answers(data):
-    with open(ANSWERS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def append_answer(entry):
-    answers = load_answers()
-    answers.append(entry)
-    save_answers(answers)
+QUESTION_TIME = 50  # segundos por pregunta (no usado como timer visible, es referencia)
+CONTINUE_DELAY = 1   # segundos (no obstructivo, solo para lógica si se necesita)
+POINTS_PER_CORRECT = 10
+ACTIVE_THRESHOLD = 6  # segundos para considerar "activo" en admin
+AUTOREFRESH_MS = 500  # intervalo de auto-refresh (ms)
 
 # ---------------------------
-# Preguntas (8)
+# Preguntas (puedes externalizar después)
 # ---------------------------
 questions = [
     {"q":"¿Cuál es el propósito central de la inteligencia artificial según Russell y Norvig (2021)?",
@@ -101,111 +80,107 @@ questions = [
                 "Alfabetización tecnológica, asequibilidad, conectividad y accesibilidad"],
      "correct":"Alfabetización tecnológica, asequibilidad, conectividad y accesibilidad"}
 ]
-
-# ---------------------------
-# Parámetros
-# ---------------------------
-QUESTION_TIME = 50  # s por pregunta
-CONTINUE_DELAY = 10  # s después de presionar continuar
-POINTS_PER_CORRECT = 10
 TOTAL_QUESTIONS = len(questions)
 
 # ---------------------------
-# Helpers
+# Utilidades de persistencia
 # ---------------------------
-def format_seconds_to_mmss(s):
+def load_state():
     try:
-        s = int(s)
-    except:
-        return "—"
-    mm = s // 60
-    ss = s % 60
-    return f"{mm:02d}:{ss:02d}"
+        with open(STATE_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"inicio": None, "jugadores": [], "players_info": {}, "organizer": None}
 
-def ensure_state_keys(fs):
-    fs.setdefault("inicio", None)
-    fs.setdefault("jugadores", [])
+def save_state(data):
+    try:
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Error guardando state.json: {e}")
+
+def load_answers():
+    try:
+        with open(ANSWERS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def save_answers(data):
+    try:
+        with open(ANSWERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Error guardando answers.json: {e}")
+
+def append_answer(entry):
+    answers = load_answers()
+    answers.append(entry)
+    save_answers(answers)
+
+# ---------------------------
+# Helpers UI / lógica
+# ---------------------------
+def ensure_player_structure(fs, name):
     fs.setdefault("players_info", {})
-    fs.setdefault("organizer", None)
-    return fs
-
-# ---------------------------
-# Estado en session
-# ---------------------------
-if "jugadores" not in st.session_state:
-    st.session_state.jugadores = {}
-if "answers" not in st.session_state:
-    st.session_state.answers = load_answers()
-if "show_next" not in st.session_state:
-    st.session_state.show_next = False
-if "last_feedback_time" not in st.session_state:
-    st.session_state.last_feedback_time = 0
-if "last_feedback_msg" not in st.session_state:
-    st.session_state.last_feedback_msg = ""
-if "current_question" not in st.session_state:
-    st.session_state.current_question = 0
-if "selection" not in st.session_state:
-    st.session_state.selection = None
-
-# ---------------------------
-# Funciones de jugador
-# ---------------------------
-def add_player(name):
-    name = name.strip()
-    if not name:
-        return
-    fs = ensure_state_keys(load_state())
-    if name not in fs["jugadores"]:
-        fs["jugadores"].append(name)
-    fs["players_info"].setdefault(name, {
+    pinfo = fs["players_info"].setdefault(name, {
         "points": 0,
         "aciertos": 0,
         "preg": 0,
         "fin": False,
         "tiempo": None,
-        "joined": time.time()
+        "joined": time.time(),
+        "last_seen": time.time()
     })
-    save_state(fs)
-    st.session_state.jugadores[name] = fs["players_info"][name]
+    return pinfo
 
-def reset_all():
-    save_state({"inicio": None, "jugadores": [], "players_info": {}, "organizer": None})
-    save_answers([])
-    st.session_state.jugadores = {}
-    st.session_state.answers = []
-    st.session_state.show_next = False
-    st.session_state.current_question = 0
-    st.session_state.selection = None
+def format_seconds_to_mmss(s):
+    try:
+        s = int(s)
+    except Exception:
+        return "—"
+    mm = s // 60
+    ss = s % 60
+    return f"{mm:02d}:{ss:02d}"
 
-# ---------------------------
-# Barra 🛸🌕
-# ---------------------------
 def barra_progreso(player_points):
     progreso = player_points / (POINTS_PER_CORRECT * TOTAL_QUESTIONS)
-    progreso = min(1.0, progreso)
-    left_percent = max(2, min(98, progreso*100))
+    progreso = min(1.0, max(0.0, progreso))
+    left_percent = max(2, min(98, int(progreso*100)))
     html = f"""
-    <div style="position:relative;width:100%;height:36px;background:#222;border-radius:10px;padding:4px;overflow:hidden;">
-        <div style="position:absolute;left:0;top:0;height:100%;width:{progreso*100}%;background:rgba(34,197,94,0.18);border-radius:8px;"></div>
-        <div style="position:absolute;left:{left_percent}%;top:3px;font-size:22px;transform:translateX(-50%);transition:left .4s ease;">🛸</div>
+    <div style="position:relative;width:100%;height:36px;background:#111;border-radius:10px;padding:4px;overflow:hidden;border:1px solid #333;">
+        <div style="position:absolute;left:0;top:0;height:100%;width:{progreso*100}%;background:rgba(34,197,94,0.18);border-radius:8px;transition:width .4s ease;"></div>
+        <div style="position:absolute;left:{left_percent}%;top:2px;font-size:20px;transform:translateX(-50%);transition:left .4s ease;">🛸</div>
         <div style="position:absolute;right:8px;top:6px;font-size:18px;">🌕</div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
 
 # ---------------------------
-# Página
+# Inicialización session
 # ---------------------------
-st.set_page_config(page_title="Formulario de Inteligencia Artificial y Sistemas Cibernéticos", layout="wide")
+st.set_page_config(page_title="Formulario IA y Sistemas Cibernéticos", layout="wide")
+# auto refresh (produce re-ejecución completa cada intervalo)
+st_autorefresh(interval=AUTOREFRESH_MS, key="auto_refresh")
 
-# Auto-refresh cada 0.5s
-st_autorefresh(interval=500, key="auto_refresh")
-
-# ---------- Admin ----------
 if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
+if "current_question" not in st.session_state:
+    st.session_state.current_question = 0
+if "show_next" not in st.session_state:
+    st.session_state.show_next = False
+if "selection" not in st.session_state:
+    st.session_state.selection = None
+if "answers" not in st.session_state:
+    st.session_state.answers = load_answers()
 
+# ---------------------------
+# Sidebar: Admin
+# ---------------------------
+fs = ensure_state_keys = None  # placeholder to avoid linter warnings
+fs = load_state()
 st.sidebar.header("Administrador")
+
 if not st.session_state.admin_authenticated:
     admin_user = st.sidebar.text_input("Usuario (admin)")
     admin_pass = st.sidebar.text_input("Contraseña (admin)", type="password")
@@ -216,78 +191,119 @@ if not st.session_state.admin_authenticated:
         else:
             st.sidebar.error("Credenciales incorrectas")
 else:
-    fs = ensure_state_keys(load_state())
-
-    # Organizer name
+    # Organizer field
     organizer = st.sidebar.text_input("Nombre de quien inicia el programa:", value=fs.get("organizer") or "")
 
-    # Players connected
-    st.sidebar.markdown("### 👥 Jugadores conectados")
+    # Players connected (admin view)
+    st.sidebar.markdown("### 👥 Jugadores registrados")
     players_list = []
     for name, info in fs.get("players_info", {}).items():
         joined_ts = info.get("joined", None)
-        joined_str = time.strftime("%H:%M:%S", time.localtime(joined_ts)) if joined_ts else "—"
+        joined_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(joined_ts)) if joined_ts else "—"
+        last_seen = info.get("last_seen", 0)
+        last_seen_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last_seen)) if last_seen else "—"
+        activo = (time.time() - last_seen) < ACTIVE_THRESHOLD
         players_list.append({
             "Jugador": name,
+            "Estado": "🟢 Activo" if activo else "🔴 Desconectado",
             "Aciertos": info.get("aciertos", 0),
             "Puntos": info.get("points", 0),
-            "Conectado": joined_str
+            "Se unió": joined_str,
+            "Última actividad": last_seen_str
         })
-    if players_list:
-        df_players = pd.DataFrame(players_list).sort_values("Conectado")
-        st.sidebar.dataframe(df_players, height=220)
-    else:
-        st.sidebar.info("No hay jugadores conectados")
 
-    # Start race
+    if players_list:
+        df_players = pd.DataFrame(players_list).sort_values(["Estado","Jugador"], ascending=[False, True])
+        st.sidebar.dataframe(df_players, height=260)
+        csv = df_players.to_csv(index=False).encode("utf-8")
+        st.sidebar.download_button("Exportar jugadores (CSV)", data=csv, file_name="jugadores.csv", mime="text/csv")
+    else:
+        st.sidebar.info("No hay jugadores registrados aún")
+
+    # Start race button
     if st.sidebar.button("🚀 Iniciar carrera (confirmar todos conectados)"):
         if not organizer.strip():
             st.sidebar.warning("Ingrese el nombre del organizador antes de iniciar.")
         else:
-            fs["inicio"] = time.time()
-            fs["organizer"] = organizer
-            save_state(fs)
+            fs_local = load_state()
+            fs_local["inicio"] = time.time()
+            fs_local["organizer"] = organizer
+            save_state(fs_local)
+
+            # Establecer valores en la sesión del admin (no necesario para jugadores, ellos detectarán inicio por estado)
+            st.session_state.show_next = True
+            st.session_state.current_question = 0
+            st.session_state.selection = None
+
             st.sidebar.success("Carrera iniciada")
 
     # Reset / eliminar registros
-    if st.sidebar.button("🧹 Eliminar registro"):
-        reset_all()
+    if st.sidebar.button("🧹 Eliminar registro (RESET)"):
+        save_state({"inicio": None, "jugadores": [], "players_info": {}, "organizer": None})
+        save_answers([])
+        # Reset session_state relevant keys
+        st.session_state.current_question = 0
+        st.session_state.show_next = False
+        st.session_state.selection = None
         st.sidebar.success("Registros eliminados")
 
-    # Auditoría
+    # Auditoría (respuestas)
     st.sidebar.markdown("### 🗂 Auditoría (respuestas)")
     answers = load_answers()
     if answers:
-        nombres = sorted(list({a.get("jugador","") for a in answers if a.get("jugador","")}))
-        nombres = [n for n in nombres if n]
-        selected = st.sidebar.selectbox("Filtrar por jugador", ["(Todos)"] + nombres)
         df_a = pd.DataFrame(answers)
         if "timestamp" in df_a.columns:
             df_a = df_a.copy()
             df_a["hora"] = pd.to_datetime(df_a["timestamp"], unit="s").dt.strftime("%Y-%m-%d %H:%M:%S")
-        if selected and selected != "(Todos)":
-            df_a = df_a[df_a["jugador"] == selected]
-        cols_to_show = []
-        if "hora" in df_a.columns:
-            cols_to_show.append("hora")
-        for col in ["jugador","pregunta_idx","selected","correct"]:
-            if col in df_a.columns:
-                cols_to_show.append(col)
-        if cols_to_show:
-            st.sidebar.dataframe(df_a[cols_to_show].sort_values(by="hora", ascending=False).reset_index(drop=True), height=220)
-            csv = df_a[cols_to_show].to_csv(index=False).encode("utf-8")
-            st.sidebar.download_button("Exportar auditoría (CSV)", data=csv, file_name="auditoria.csv", mime="text/csv")
+        cols = [c for c in ["hora","jugador","pregunta_idx","selected","correct"] if c in df_a.columns]
+        st.sidebar.dataframe(df_a[cols].sort_values(by="hora", ascending=False).reset_index(drop=True), height=200)
+        csv2 = df_a[cols].to_csv(index=False).encode("utf-8")
+        st.sidebar.download_button("Exportar auditoría (CSV)", data=csv2, file_name="auditoria.csv", mime="text/csv")
     else:
         st.sidebar.info("No hay registros de auditoría aún.")
 
-# ---------- Main jugador ----------
+# ---------------------------
+# Main: Jugador
+# ---------------------------
 st.header("Formulario de Inteligencia Artificial y Sistemas Cibernéticos")
 nombre = st.text_input("Ingresa tu nombre para unirte:", key="player_name_input")
-if nombre and nombre.strip():
-    add_player(nombre.strip())
-    jugador = st.session_state.jugadores.get(nombre.strip())
 
-    fs_main = ensure_state_keys(load_state())
+# actualizar heartbeat si hay nombre
+if nombre and nombre.strip():
+    nombre = nombre.strip()
+    # cargar estado y asegurar estructura
+    fs = load_state()
+    if nombre not in fs.get("jugadores", []):
+        fs.setdefault("jugadores", []).append(nombre)
+    # asegurar estructura del jugador
+    pinfo = ensure_player_structure(fs, nombre)
+
+    # actualizar last_seen (heartbeat)
+    pinfo["last_seen"] = time.time()
+    fs["players_info"][nombre] = pinfo
+    save_state(fs)
+
+    # sincronizar sesión del jugador con su progreso guardado
+    # si la carrera ya inició y el jugador no ha terminado, mostrar la pregunta automáticamente
+    inicio_global = fs.get("inicio", None)
+    jugador = fs["players_info"][nombre]
+
+    # asegurar valores en st.session_state relativos al jugador
+    # mantendremos current_question ligado al progreso del jugador (preg)
+    if "player_name" not in st.session_state:
+        st.session_state.player_name = nombre
+
+    # mostrar la pregunta si la carrera inició y el jugador no terminó
+    if inicio_global and not jugador.get("fin", False):
+        # si la sesión del jugador no está mostrando la pregunta, activarla
+        if not st.session_state.show_next:
+            # si el jugador no ha respondido ninguna pregunta aún, iniciar en la pregunta 0
+            st.session_state.current_question = jugador.get("preg", 0)
+            st.session_state.show_next = True
+            st.session_state.selection = None
+
+    # main UI cuando carrera iniciada
+    fs_main = load_state()
     inicio_global = fs_main.get("inicio", None)
     tiempo_total = TOTAL_QUESTIONS * QUESTION_TIME
     tiempo_pasado = int(time.time() - inicio_global) if inicio_global else 0
@@ -295,67 +311,88 @@ if nombre and nombre.strip():
 
     if inicio_global and not jugador.get("fin", False):
         idx = st.session_state.current_question
+        # proteger índice
+        if idx < 0:
+            idx = 0
+        if idx >= TOTAL_QUESTIONS:
+            idx = TOTAL_QUESTIONS - 1
         qdata = questions[idx]
 
-        # Mostrar pregunta solo si show_next es True
         if st.session_state.show_next:
-            st.subheader(f"Pregunta #{idx+1}")
+            st.subheader(f"Pregunta #{idx+1} / {TOTAL_QUESTIONS}")
             st.write(qdata["q"])
-            st.session_state.selection = st.radio("Selecciona una opción:", qdata["options"], key=f"radio_{nombre}_{idx}")
-            if st.button("Enviar respuesta", key=f"submit_{nombre}_{idx}"):
-                correcto = st.session_state.selection == qdata["correct"]
+            # radio key must be unique per player and per question
+            radio_key = f"radio_{nombre}_{idx}"
+            st.session_state.selection = st.radio("Selecciona una opción:", qdata["options"], key=radio_key)
+
+            submit_key = f"submit_{nombre}_{idx}"
+            if st.button("Enviar respuesta", key=submit_key):
+                correcto = (st.session_state.selection == qdata["correct"])
                 entry = {
                     "timestamp": int(time.time()),
-                    "jugador": nombre.strip(),
+                    "jugador": nombre,
                     "pregunta_idx": idx,
                     "selected": st.session_state.selection,
                     "correct": correcto
                 }
                 append_answer(entry)
-                if correcto:
-                    st.session_state.last_feedback_msg = "✅ Correcto (+10 pts)"
-                    jugador["points"] += POINTS_PER_CORRECT
-                    jugador["aciertos"] += 1
-                else:
-                    st.session_state.last_feedback_msg = "❌ Incorrecto"
-                st.session_state.show_next = False  # Oculta pregunta y muestra boton continuar
-                st.session_state.last_feedback_time = time.time()
-                # Guardar jugador
-                fs_p = ensure_state_keys(load_state())
-                fs_p.setdefault("players_info", {})
-                fs_p["players_info"][nombre.strip()] = jugador
-                if nombre.strip() not in fs_p.get("jugadores",[]):
-                    fs_p.setdefault("jugadores", []).append(nombre.strip())
-                save_state(fs_p)
 
-        else:
-            # Mostrar boton continuar
-            st.write(st.session_state.last_feedback_msg)
-            if st.button("Continuar a la siguiente pregunta"):
-                st.session_state.current_question +=1
-                jugador["preg"] += 1
-                st.session_state.show_next = True
-                # Chequear si finalizó
-                if jugador.get("preg") >= TOTAL_QUESTIONS:
-                    jugador["fin"] = True
-                    jugador["tiempo"] = int(time.time() - inicio_global)
+                # actualizar jugador local y persistir
+                fs_upd = load_state()
+                p = fs_upd["players_info"].get(nombre, {})
+                if correcto:
+                    p["points"] = p.get("points", 0) + POINTS_PER_CORRECT
+                    p["aciertos"] = p.get("aciertos", 0) + 1
+                    st.success("✅ Correcto (+10 pts)")
+                else:
+                    st.error("❌ Incorrecto")
+                p["preg"] = p.get("preg", 0) + 1
+                # si terminó
+                if p["preg"] >= TOTAL_QUESTIONS:
+                    p["fin"] = True
+                    p["tiempo"] = int(time.time() - fs_upd.get("inicio", time.time()))
                     st.balloons()
                     st.success("🏁 ¡Has completado las 8 preguntas!")
-                # Guardar jugador actualizado
-                fs_p = ensure_state_keys(load_state())
-                fs_p.setdefault("players_info", {})
-                fs_p["players_info"][nombre.strip()] = jugador
-                save_state(fs_p)
+                # guardar cambios
+                fs_upd["players_info"][nombre] = p
+                save_state(fs_upd)
 
-        # Mostrar barra 🛸🌕
-        barra_progreso(jugador.get("points",0))
+                # ocultar pregunta y mostrar botón continuar (por sesión)
+                st.session_state.show_next = False
+                st.session_state.last_feedback_time = time.time()
+                st.session_state.last_feedback = "Correcto" if correcto else "Incorrecto"
 
-    elif jugador.get("fin", False):
+        else:
+            # mostrar feedback y botón continuar
+            last = st.session_state.get("last_feedback", "")
+            if last:
+                if last == "Correcto":
+                    st.success("✅ Correcto")
+                else:
+                    st.info("❌ Incorrecto")
+            if st.button("Continuar a la siguiente pregunta"):
+                # cargar jugador y avanzar
+                fs_adv = load_state()
+                p = fs_adv["players_info"].get(nombre, {})
+                # asegurar increment (ya hecho al enviar) — pero por seguridad:
+                st.session_state.current_question = p.get("preg", st.session_state.current_question)
+                # volver a mostrar la pregunta si no finalizó
+                if not p.get("fin", False):
+                    st.session_state.show_next = True
+                    st.session_state.selection = None
+                else:
+                    st.success("Has terminado la carrera. ¡Buen trabajo!")
+    elif nombre and jugador.get("fin", False):
         st.success("Has terminado la carrera. ¡Buen trabajo!")
         if jugador.get("tiempo") is not None:
             st.info(f"Tiempo total: {format_seconds_to_mmss(jugador.get('tiempo'))}")
+        barra_progreso(jugador.get("points", 0))
     else:
+        # si aún no inició la carrera
         st.info("⏳ Esperando que el organizador inicie la carrera...")
+        # listar progreso parcial si lo deseas
+        if nombre:
+            barra_progreso(jugador.get("points", 0))
 
-st.caption("Nota: El panel administrador requiere iniciar sesión ")
-st.caption("Desarrollado por Kendall Quirós Hernández en el 2025")
+st.caption("Nota: El panel administrador requiere iniciar sesión")
+st.caption("Desarrollado por Kendall Quirós Hernández — versión optimizada (2025)")
