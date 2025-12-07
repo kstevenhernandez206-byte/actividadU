@@ -1,9 +1,10 @@
-# carrera.py — Versión final: Mostrar feedback + botón "Continuar" inmediato
+# carrera.py — Integrado: feedback 3s + respuesta correcta + animación continuar + bloqueo multi-tab
 import streamlit as st
 import time
 import pandas as pd
 import os
 import json
+import secrets
 from datetime import timedelta
 from streamlit_autorefresh import st_autorefresh
 
@@ -17,9 +18,9 @@ ANSWERS_FILE = os.path.join(BASE_DIR, "answers.json")
 QUESTION_TIME = 50  # segundos por pregunta (referencia)
 CONTINUE_DELAY = 1
 POINTS_PER_CORRECT = 10
-ACTIVE_THRESHOLD = 6   # segundos para considerar "activo" en admin
-AUTOREFRESH_MS = 500   # ms
-# FEEDBACK_SECONDS removed because we show Continue immediately
+ACTIVE_THRESHOLD = 6   # segundos para considerar "activo" en admin (y para bloqueo multi-tab)
+AUTOREFRESH_MS = 500   # ms (auto-refresh)
+FEEDBACK_SECONDS = 3   # segundos que se muestra el feedback antes de habilitar "Continuar"
 
 # ---------------------------
 # Preguntas
@@ -131,7 +132,8 @@ def ensure_player_structure(fs, name):
         "fin": False,
         "tiempo": None,
         "joined": time.time(),
-        "last_seen": time.time()
+        "last_seen": time.time(),
+        # session_token se añadirá cuando el jugador se registre
     })
     return pinfo
 
@@ -151,17 +153,48 @@ def barra_progreso(player_points, preguntas_respondidas):
     # barra + contador numérico a la derecha
     html = f"""
     <div style="display:flex;align-items:center;gap:12px;">
-      <div style="flex:1;position:relative;height:36px;background:#111;border-radius:10px;padding:4px;overflow:hidden;border:1px solid #333;">
+      <div style="flex:1;position:relative;height:40px;background:#111;border-radius:10px;padding:6px;overflow:hidden;border:1px solid #333;">
           <div style="position:absolute;left:0;top:0;height:100%;width:{progreso*100}%;background:rgba(34,197,94,0.18);border-radius:8px;transition:width .4s ease;"></div>
-          <div style="position:absolute;left:{left_percent}%;top:2px;font-size:20px;transform:translateX(-50%);transition:left .4s ease;">🛸</div>
-          <div style="position:absolute;right:8px;top:6px;font-size:18px;">🌕</div>
+          <div style="position:absolute;left:{left_percent}%;top:4px;font-size:22px;transform:translateX(-50%);transition:left .4s ease;">🛸</div>
+          <div style="position:absolute;right:10px;top:8px;font-size:18px;">🌕</div>
       </div>
-      <div style="min-width:120px;text-align:right;font-weight:600;color:#cfe8d8;">
+      <div style="min-width:120px;text-align:right;font-weight:700;color:#cfe8d8;">
         {preguntas_respondidas} / {TOTAL_QUESTIONS}
       </div>
     </div>
     """
     st.markdown(html, unsafe_allow_html=True)
+
+# ---------------------------
+# Estilos / animación para botones (simple, afecta botones de Streamlit)
+# ---------------------------
+st.markdown(
+    """
+    <style>
+    /* Pulso sutil para botones (continuar se verá animado) */
+    .stButton>button {
+      transition: transform .14s ease-in-out, box-shadow .14s ease-in-out;
+      border-radius: 8px;
+      padding: 8px 18px;
+    }
+    .stButton>button:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+    }
+    /* animación de pulso (glow) */
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 0 0 rgba(34,197,94,0.35); }
+      70% { box-shadow: 0 0 0 10px rgba(34,197,94,0); }
+      100% { box-shadow: 0 0 0 0 rgba(34,197,94,0); }
+    }
+    /* aplicamos glow al último botón en el contenedor .continue-area si existe */
+    .continue-area .stButton>button {
+      animation: pulseGlow 1.8s infinite;
+      border: 2px solid rgba(34,197,94,0.12);
+    }
+    </style>
+    """, unsafe_allow_html=True
+)
 
 # ---------------------------
 # Inicialización
@@ -180,9 +213,11 @@ if "selection" not in st.session_state:
     st.session_state.selection = None
 if "answers" not in st.session_state:
     st.session_state.answers = load_answers()
-# feedbacks por jugador: dict {player_name: {"last": "Correcto"/"Incorrecto", "time": ts}}
+# feedbacks por jugador: dict {player_name: {"last": "Correcto"/"Incorrecto", "time": ts, "correct_answer": ...}}
 if "feedbacks" not in st.session_state:
     st.session_state.feedbacks = {}
+if "my_token" not in st.session_state:
+    st.session_state.my_token = None
 
 # ---------------------------
 # Sidebar: Admin
@@ -247,6 +282,7 @@ else:
         st.session_state.show_next = False
         st.session_state.selection = None
         st.session_state.feedbacks = {}
+        st.session_state.my_token = None
         st.sidebar.success("Registros eliminados")
 
     st.sidebar.markdown("### 🗂 Auditoría (respuestas)")
@@ -269,43 +305,63 @@ else:
 st.header("Formulario de Inteligencia Artificial y Sistemas Cibernéticos")
 nombre = st.text_input("Ingresa tu nombre para unirte:", key="player_name_input")
 
+# Si el usuario ingresó nombre
 if nombre and nombre.strip():
     nombre = nombre.strip()
     fs = load_state()
+
+    # bloqueo multi-tab: si existe otra sesión activa para este nombre (last_seen reciente) y no coincide el token actual,
+    # DENEGAR nueva sesión hasta que la anterior expire por inactividad.
+    existing = fs.get("players_info", {}).get(nombre)
+    now_ts = time.time()
+
+    if existing:
+        existing_token = existing.get("session_token")
+        existing_last = existing.get("last_seen", 0)
+        # si hay token y la última actividad es reciente y este cliente no tiene el mismo token => bloquear
+        if existing_token and (now_ts - existing_last) < ACTIVE_THRESHOLD and st.session_state.get("my_token") != existing_token:
+            st.warning("⚠️ Ya hay otra sesión activa con ese nombre. Espere a que termine o use otro nombre.")
+            st.stop()  # detenemos para que no se muestre la UI del jugador
+    # Si llegamos aquí, podemos registrar/actualizar la sesión del jugador
+    # asignar token si no existe en session_state (esto distingue pestañas)
+    if not st.session_state.get("my_token"):
+        st.session_state.my_token = secrets.token_hex(16)  # token de sesión local
+
+    # asegurar estructura del jugador en el JSON
     if nombre not in fs.get("jugadores", []):
         fs.setdefault("jugadores", []).append(nombre)
     pinfo = ensure_player_structure(fs, nombre)
 
+    # registrar/actualizar token en estado persistente
+    pinfo["session_token"] = st.session_state.my_token
     # actualizar last_seen (heartbeat)
-    pinfo["last_seen"] = time.time()
+    pinfo["last_seen"] = now_ts
     fs["players_info"][nombre] = pinfo
     save_state(fs)
 
     inicio_global = fs.get("inicio", None)
     jugador = fs["players_info"][nombre]
 
+    # asegurar valores en st.session_state
     if "player_name" not in st.session_state:
         st.session_state.player_name = nombre
 
-    # si la carrera inició, preparar show_next para el jugador según su progreso guardado
+    # preparar show_next según progreso guardado
     if inicio_global and not jugador.get("fin", False):
         if not st.session_state.show_next:
             st.session_state.current_question = jugador.get("preg", 0)
             st.session_state.show_next = True
             st.session_state.selection = None
 
-    # recalcular estado
+    # recalcular estado por seguridad
     fs_main = load_state()
     inicio_global = fs_main.get("inicio", None)
 
-    # -------------------------
-    # Mostrar barra UNA sola vez (siempre durante la interacción del jugador)
-    # -------------------------
-    # usamos el número de preguntas respondidas = jugador["preg"]
+    # mostrar barra UNA sola vez (arriba)
     barra_progreso(jugador.get("points", 0), jugador.get("preg", 0))
 
     # -------------------------
-    # Lógica de preguntas / feedback (submit oculta pregunta, muestra feedback y CONTINUAR)
+    # Lógica de preguntas / feedback
     # -------------------------
     if inicio_global and not jugador.get("fin", False):
         idx = st.session_state.current_question
@@ -316,17 +372,15 @@ if nombre and nombre.strip():
             idx = TOTAL_QUESTIONS - 1
         qdata = questions[idx]
 
-        # Si estamos en modo "mostrar pregunta"
+        # MODO: mostrar pregunta activa
         if st.session_state.show_next:
             st.subheader(f"Pregunta #{idx+1} / {TOTAL_QUESTIONS}")
             st.write(qdata["q"])
             radio_key = f"radio_{nombre}_{idx}"
-            # si existe selección previa en session_state, la mantiene; si no, queda None
             st.session_state.selection = st.radio("Selecciona una opción:", qdata["options"], key=radio_key)
 
             submit_key = f"submit_{nombre}_{idx}"
             if st.button("Enviar respuesta", key=submit_key):
-                # validar selección existente
                 selected = st.session_state.get("selection", None)
                 if selected is None:
                     st.warning("Seleccione una opción antes de enviar.")
@@ -357,44 +411,53 @@ if nombre and nombre.strip():
                     fs_upd["players_info"][nombre] = p
                     save_state(fs_upd)
 
-                    # Guardar feedback por jugador en session_state (no bloquear)
+                    # Guardar feedback por jugador en session_state (incluye respuesta correcta para mostrar si falla)
                     st.session_state.feedbacks[nombre] = {
                         "last": "Correcto" if correcto else "Incorrecto",
-                        "time": time.time()
+                        "time": time.time(),
+                        "correct_answer": qdata["correct"]
                     }
 
-                    # Ocultar pregunta y entrar en modo feedback (mostrar CONTINUAR inmediatamente)
+                    # Ocultar pregunta y entrar en modo feedback con temporizador
                     st.session_state.show_next = False
-                    # Actualizar jugador variable local para que la barra muestre puntos actualizados
-                    jugador = fs_upd["players_info"][nombre]
 
         else:
-            # Modo feedback: mostrar feedback guardado para este jugador
+            # Modo feedback: obtener feedback y calcular tiempo restante
             fb = st.session_state.feedbacks.get(nombre, None)
             if fb:
+                elapsed = time.time() - fb.get("time", 0)
+                remaining = max(0, FEEDBACK_SECONDS - int(elapsed))
+
+                # Mostrar feedback principal
                 if fb.get("last") == "Correcto":
                     st.success("✅ Correcto (+10 pts)")
                 else:
                     st.error("❌ Incorrecto")
+                    # Mostrar cuál era la respuesta correcta
+                    st.info(f"Respuesta correcta: **{fb.get('correct_answer','—')}**")
 
-                st.write("")  # espacio
-
-                # Mostrar botón CONTINUAR inmediatamente
-                if st.button("Continuar a la siguiente pregunta"):
-                    fs_adv = load_state()
-                    p = fs_adv["players_info"].get(nombre, {})
-                    # sincronizar current_question con lo guardado (p['preg'] ya fue incrementada al enviar)
-                    st.session_state.current_question = p.get("preg", st.session_state.current_question)
-                    if not p.get("fin", False):
-                        st.session_state.show_next = True
-                        st.session_state.selection = None
-                        # limpiar feedback
+                # Mostrar contador de espera (si elegiste 2/3 segundos)
+                if remaining > 0:
+                    st.info(f"Continuando en {remaining} s...")  # mensaje visible durante la espera
+                else:
+                    # Mostrar botón CONTINUAR (con efecto visual por CSS)
+                    # lo ponemos dentro de un contenedor con clase 'continue-area' para aplicar pulso glow
+                    container = st.container()
+                    container.markdown('<div class="continue-area"></div>', unsafe_allow_html=True)
+                    if container.button("Continuar a la siguiente pregunta"):
+                        # Avanzar a la pregunta guardada
+                        fs_adv = load_state()
+                        p = fs_adv["players_info"].get(nombre, {})
+                        st.session_state.current_question = p.get("preg", st.session_state.current_question)
+                        if not p.get("fin", False):
+                            st.session_state.show_next = True
+                            st.session_state.selection = None
+                        # limpiar feedback guardado
                         if nombre in st.session_state.feedbacks:
                             del st.session_state.feedbacks[nombre]
-                    else:
-                        st.success("Has terminado la carrera. ¡Buen trabajo!")
+
             else:
-                # si por alguna razón no hay feedback registrado, mostramos un botón para seguir
+                # No hay feedback (caso raro), mostrar continuar de todos modos
                 if st.button("Continuar a la siguiente pregunta"):
                     fs_adv = load_state()
                     p = fs_adv["players_info"].get(nombre, {})
@@ -404,15 +467,12 @@ if nombre and nombre.strip():
                         st.session_state.selection = None
 
     elif nombre and jugador.get("fin", False):
-        # Mostrar pantalla final (sin volver a dibujar la barra anterior)
+        # Mostrar pantalla final (sin duplicar la barra arriba)
         st.success("Has terminado la carrera. ¡Buen trabajo!")
         if jugador.get("tiempo") is not None:
             st.info(f"Tiempo total: {format_seconds_to_mmss(jugador.get('tiempo'))}")
-        # No volver a llamar a barra_progreso aquí (ya se mostró arriba)
-
     else:
-        # si aún no inició la carrera
         st.info("⏳ Esperando que el organizador inicie la carrera...")
 
 st.caption("Nota: El panel administrador requiere iniciar sesión")
-st.caption("Desarrollado por Kendall Quirós Hernández — versión final (2025)")
+st.caption("Desarrollado por Kendall Quirós Hernández — versión con mejoras (2025)")
