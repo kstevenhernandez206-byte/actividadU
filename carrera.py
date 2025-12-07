@@ -430,7 +430,7 @@ if nombre and nombre.strip():
                     # cambiar modo a feedback (ocultar pregunta)
                     st.session_state.mode = "feedback"
                     # fuerza re-ejecución para que la UI muestre feedback ya
-                    st.experimental_rerun()
+                    st.rerun()
 
         elif st.session_state.mode == "feedback":
             # Mostrar feedback y temporizador
