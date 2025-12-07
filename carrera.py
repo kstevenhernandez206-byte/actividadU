@@ -1,4 +1,4 @@
-# carrera.py — Versión corregida: barra única, feedback por jugador y botón "Continuar"
+# carrera.py — Versión final: Mostrar feedback + botón "Continuar" inmediato
 import streamlit as st
 import time
 import pandas as pd
@@ -19,7 +19,7 @@ CONTINUE_DELAY = 1
 POINTS_PER_CORRECT = 10
 ACTIVE_THRESHOLD = 6   # segundos para considerar "activo" en admin
 AUTOREFRESH_MS = 500   # ms
-FEEDBACK_SECONDS = 3   # segundos que se muestra el feedback antes de permitir continuar
+# FEEDBACK_SECONDS removed because we show Continue immediately
 
 # ---------------------------
 # Preguntas
@@ -305,7 +305,7 @@ if nombre and nombre.strip():
     barra_progreso(jugador.get("points", 0), jugador.get("preg", 0))
 
     # -------------------------
-    # Lógica de preguntas / feedback
+    # Lógica de preguntas / feedback (submit oculta pregunta, muestra feedback y CONTINUAR)
     # -------------------------
     if inicio_global and not jugador.get("fin", False):
         idx = st.session_state.current_question
@@ -357,13 +357,13 @@ if nombre and nombre.strip():
                     fs_upd["players_info"][nombre] = p
                     save_state(fs_upd)
 
-                    # Guardar feedback por jugador en session_state (no bloqueamos)
+                    # Guardar feedback por jugador en session_state (no bloquear)
                     st.session_state.feedbacks[nombre] = {
                         "last": "Correcto" if correcto else "Incorrecto",
                         "time": time.time()
                     }
 
-                    # Ocultar pregunta y entrar en modo feedback
+                    # Ocultar pregunta y entrar en modo feedback (mostrar CONTINUAR inmediatamente)
                     st.session_state.show_next = False
                     # Actualizar jugador variable local para que la barra muestre puntos actualizados
                     jugador = fs_upd["players_info"][nombre]
@@ -371,33 +371,28 @@ if nombre and nombre.strip():
         else:
             # Modo feedback: mostrar feedback guardado para este jugador
             fb = st.session_state.feedbacks.get(nombre, None)
-            remaining = 0
             if fb:
-                elapsed = time.time() - fb.get("time", 0)
-                remaining = max(0, int(FEEDBACK_SECONDS - elapsed))
                 if fb.get("last") == "Correcto":
                     st.success("✅ Correcto (+10 pts)")
                 else:
                     st.error("❌ Incorrecto")
 
-                if remaining > 0:
-                    st.info(f"Continuando en {remaining} s... (espera para ver el resultado)")
-                    # no mostrar botón aún
-                else:
-                    # mostrar botón continuar (habilitado)
-                    if st.button("Continuar a la siguiente pregunta"):
-                        fs_adv = load_state()
-                        p = fs_adv["players_info"].get(nombre, {})
-                        # sincronizar current_question con lo guardado
-                        st.session_state.current_question = p.get("preg", st.session_state.current_question)
-                        if not p.get("fin", False):
-                            st.session_state.show_next = True
-                            st.session_state.selection = None
-                            # limpiar feedback
-                            if nombre in st.session_state.feedbacks:
-                                del st.session_state.feedbacks[nombre]
-                        else:
-                            st.success("Has terminado la carrera. ¡Buen trabajo!")
+                st.write("")  # espacio
+
+                # Mostrar botón CONTINUAR inmediatamente
+                if st.button("Continuar a la siguiente pregunta"):
+                    fs_adv = load_state()
+                    p = fs_adv["players_info"].get(nombre, {})
+                    # sincronizar current_question con lo guardado (p['preg'] ya fue incrementada al enviar)
+                    st.session_state.current_question = p.get("preg", st.session_state.current_question)
+                    if not p.get("fin", False):
+                        st.session_state.show_next = True
+                        st.session_state.selection = None
+                        # limpiar feedback
+                        if nombre in st.session_state.feedbacks:
+                            del st.session_state.feedbacks[nombre]
+                    else:
+                        st.success("Has terminado la carrera. ¡Buen trabajo!")
             else:
                 # si por alguna razón no hay feedback registrado, mostramos un botón para seguir
                 if st.button("Continuar a la siguiente pregunta"):
@@ -420,4 +415,4 @@ if nombre and nombre.strip():
         st.info("⏳ Esperando que el organizador inicie la carrera...")
 
 st.caption("Nota: El panel administrador requiere iniciar sesión")
-st.caption("Desarrollado por Kendall Quirós Hernández — versión corregida (2025)")
+st.caption("Desarrollado por Kendall Quirós Hernández — versión final (2025)")
